@@ -3,6 +3,7 @@
 Person C and Person B are stubbed at the HTTP boundary, so nothing is written to Person B or the shared
 Supabase DB and there is nothing to clean up. TEST_USER is the dedicated integration-test id.
 """
+import json
 import re
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -90,17 +91,28 @@ def test_default_person_c_url_matches_its_readme(monkeypatch):
     assert person_c_url() == "http://localhost:8000"
 
 
-@pytest.mark.parametrize("msg", [
-    "Your KYC will expire today, verify now", "click here http://x.example", "share your OTP", "send your PIN",
-    "give your aadhaar number", "pay now or face arrest", "install this apk",
-])
+CORPUS = json.loads((Path(__file__).resolve().parents[3] / "person_c" / "tests" / "safety_corpus.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("msg", CORPUS["scam"])
 def test_scam_style_messages_trigger_safety(msg):
     assert looks_suspicious(msg)
 
 
-@pytest.mark.parametrize("msg", ["how much can I save?", "should I take this loan?", "what is a chit fund", "hello"])
+@pytest.mark.parametrize("msg", CORPUS["safe"])
 def test_ordinary_questions_do_not_trigger_safety(msg):
     assert not looks_suspicious(msg)
+
+
+@patch("app.person_c.httpx.AsyncClient.post", new_callable=AsyncMock)
+def test_previously_misrouted_questions_now_reach_guidance(post):
+    post.return_value = _c_response("Here is some guidance.")
+    for msg in ["is it fine to take a loan?", "should I go to the bank for a loan?",
+                "which app is best for saving?", "how do I pay my chit installment now?"]:
+        post.reset_mock()
+        r = _send(msg)
+        assert "Here is some guidance." in r.text and "Safety check:" not in r.text
+        assert post.call_args.args[0].endswith("/api/v1/integration/person_a/guidance")
 
 
 def test_safety_trigger_patterns_match_person_c_rules_py():
