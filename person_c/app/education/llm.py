@@ -1,5 +1,6 @@
 from typing import List
 from app.rag.models import RetrievedContext
+from app.formatting.plain_text import PLAIN_TEXT_RULES, sanitize_reply
 import os
 
 def format_contexts(contexts: List[RetrievedContext]) -> str:
@@ -145,7 +146,8 @@ class GroqLLM(LLMInterface):
                 ],
                 temperature=0.0
             )
-            return completion.choices[0].message.content or ""
+            # Hard safety net on top of the prompt rules: plain text, WhatsApp-safe length, whole sentences.
+            return sanitize_reply(completion.choices[0].message.content or "")
         except Exception:
             return ""
 
@@ -158,9 +160,11 @@ class GroqLLM(LLMInterface):
             "Use the retrieved source material as the factual knowledge base. "
             "Do not invent financial rules or facts that are not supported by the retrieved context. "
             "If the retrieved context does not contain enough information to answer the question, "
-            "say that the available financial-education material does not provide enough information. "
+            "reply with exactly this sentence: \"The retrieved material does not contain enough information "
+            "to answer this question.\" "
             "Do not pretend a source supports something it does not support.\n\n"
             f"Retrieved Context:\n{format_contexts(contexts)}"
+            f"{PLAIN_TEXT_RULES}"
         )
         return self._call_groq(system, question)
 
@@ -182,6 +186,7 @@ class GroqLLM(LLMInterface):
             f"Financial State:\n{financial_state}\n\n"
             f"Calculated Facts:\n{calculated_facts}\n\n"
             f"Retrieved Educational Context:\n{format_contexts(contexts)}"
+            f"{PLAIN_TEXT_RULES}"
         )
         return self._call_groq(system, question)
 
@@ -203,6 +208,7 @@ class GroqLLM(LLMInterface):
             f"Assumptions: {result.get('assumptions')}\n"
             f"Missing Info: {result.get('missing_information')}\n\n"
             f"Retrieved Educational Context:\n{format_contexts(contexts)}"
+            f"{PLAIN_TEXT_RULES}"
         )
         return self._call_groq(system, question)
 
@@ -222,6 +228,7 @@ class GroqLLM(LLMInterface):
             f"Detected Signals: {result.get('signals')}\n"
             f"Recommended Action: {result.get('recommended_action')}\n"
             f"Uncertainty Note: {result.get('uncertainty')}"
+            f"{PLAIN_TEXT_RULES}"
         )
         user_prompt = f"Message to explain:\n{message}"
         return self._call_groq(system, user_prompt)
