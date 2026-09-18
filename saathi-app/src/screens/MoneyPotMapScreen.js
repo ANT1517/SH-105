@@ -7,525 +7,274 @@ import {
   StyleSheet,
   StatusBar,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MEERA_FIXTURE, getFormattedTotal } from '../api/fixture';
 
-// --- STITCH DESIGN TOKENS ("Saathi Botanical") ---
-const COLORS = {
-  forestInk: '#0F3E17', // Primary text, headings, primary buttons
-  cream: '#FFFEFC', // Main background
-  keylimeWash: '#E1F4DF', // Secondary surfaces, highlighted notes
-  sageMist: '#B1DBB8', // Card backgrounds
-  slateHush: '#B6CED5', // Caution/locked states
-  charcoal: '#222222', // Secondary text
-  white: '#FFFFFF',
-  sageBorder: '#9AC9A2',
+// ─── Design tokens (Botanical Greenhouse) ───────────────────────────────────
+const C = {
+  forestInk:   '#0F3E17',
+  cream:       '#FFFEFC',
+  keylime:     '#E1F4DF',
+  mint:        '#CFE7D3',
+  sage:        '#B1DBB8',
+  slate:       '#B6CED5',
+  charcoal:    '#222222',
+  white:       '#FFFFFF',
+  border:      '#EFEEEB',
+  hairline:    '#E5E3DC',
 };
 
-// --- FIXTURE DATA ---
-const HEADER_DATA = {
-  greeting: 'Namaste, Meera',
-};
-
-const HERO_BALANCE_DATA = {
-  label: 'Total Money in Your Hands',
-  amount: '₹19,500',
-  subtext: 'Counted together, all your savings pots are safe',
-};
-
-const POTS_DATA = [
-  {
-    id: '1',
-    name: 'Bank',
-    subLabel: 'Bank Savings',
-    amount: '₹5,000',
-    status: 'Ready to use',
-  },
-  {
-    id: '2',
-    name: 'Cash',
-    subLabel: 'At home or bag',
-    amount: '₹2,000',
-    status: 'In hand',
-  },
-  {
-    id: '3',
-    name: 'SHG Bachat',
-    subLabel: 'Monthly meeting',
-    amount: '₹2,500',
-    status: 'Growing',
-  },
-  {
-    id: '4',
-    name: 'Post Office',
-    subLabel: 'Post office savings',
-    amount: '₹5,000',
-    status: 'Steady Growth',
-  },
-];
-
-const CHIT_DATA = {
-  name: 'Chit (Bessoo)',
-  amount: '₹4,000',
-  status: 'Locked until Oct — cannot spend now',
-};
-
-const GENTLE_NOTE_DATA = {
-  heading: "Saathi's Gentle Note",
-  body: 'Your Chit commitment is ₹4,000 every month. Because that money is locked, we leave it out of cash you can spend right now.',
-  buttonText: '🔊 Hear audio explanation (30 sec)',
-};
-
-const EDUCATION_GOAL_DATA = {
-  title: 'Education Goal',
-  savedAmount: 8000,
-  targetAmount: 12000,
-  savedText: '₹8,000 saved',
-  targetText: '₹12,000 target',
-  subtext: 'Growing steady',
-};
-
-const RECENT_EARNINGS_DATA = {
-  heading: 'Recent Earnings — Pickle + Tailoring',
-  items: [
-    { label: 'Pickle', amount: '₹1,000', isHighlight: false },
-    { label: 'Tailoring', amount: '₹600', isHighlight: false },
-    { label: 'Profit', amount: '₹400 ↑', isHighlight: true },
-  ],
-  subtext: 'Updated yesterday evening with Asha didi',
-};
+const { potsList, chit, educationGoal, recentEarnings } = MEERA_FIXTURE;
 
 export default function MoneyPotMapScreen() {
-  const goalProgressPercent =
-    (EDUCATION_GOAL_DATA.savedAmount / EDUCATION_GOAL_DATA.targetAmount) * 100;
+  const insets = useSafeAreaInsets();
+  const goalPct = Math.min(
+    (educationGoal.savedAmount / educationGoal.targetAmount) * 100,
+    100,
+  );
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.cream} />
+      <StatusBar barStyle="dark-content" backgroundColor={C.cream} />
       <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.contentContainer}
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* 1. HEADER ROW */}
+
+        {/* ── 1. HEADER ROW ──────────────────────────────────────────── */}
         <View style={styles.headerRow}>
-          <Text style={styles.greetingText}>{HEADER_DATA.greeting}</Text>
-          <TouchableOpacity style={styles.notificationButton} activeOpacity={0.7}>
+          <View>
+            <Text style={styles.greetingLabel}>Namaste 🙏</Text>
+            <Text style={styles.greetingName}>
+              {MEERA_FIXTURE.user.name} — आपका स्वागत है
+            </Text>
+          </View>
+          <TouchableOpacity style={styles.bellBtn} activeOpacity={0.7}>
             <Text style={styles.bellIcon}>🔔</Text>
           </TouchableOpacity>
         </View>
 
-        {/* 2. HERO BALANCE CARD */}
+        {/* ── 2. HERO BALANCE CARD ────────────────────────────────────── */}
         <View style={styles.heroCard}>
-          <Text style={styles.heroLabel}>{HERO_BALANCE_DATA.label}</Text>
-          <Text style={styles.heroAmount}>{HERO_BALANCE_DATA.amount}</Text>
-          <Text style={styles.heroSubtext}>{HERO_BALANCE_DATA.subtext}</Text>
+          <Text style={styles.heroEyebrow}>AAPKE PAAS KULL</Text>
+          <Text style={styles.heroLabel}>Total Money in Your Hands</Text>
+          <Text style={styles.heroAmount}>{getFormattedTotal()}</Text>
+          <Text style={styles.heroSubtext}>
+            Saare pots milakar — Counted together, all your savings pots are safe
+          </Text>
         </View>
 
-        {/* 3. YOUR 5 POTS SECTION */}
+        {/* ── 3. SAFE & TRUSTED PILL ──────────────────────────────────── */}
+        <View style={styles.safePillRow}>
+          <View style={styles.safePill}>
+            <Text style={styles.safePillText}>🔒 Aapka paisa surakshit hai — Safe &amp; Trusted</Text>
+          </View>
+        </View>
+
+        {/* ── 4. YOUR 5 POTS ─────────────────────────────────────────── */}
         <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Your 5 Pots</Text>
+          <Text style={styles.sectionTitle}>Aapke 5 Pots — Your 5 Pots</Text>
           <Text style={styles.sectionSubtitle}>Tap to open</Text>
         </View>
 
         <View style={styles.potsGrid}>
-          {POTS_DATA.map((pot) => (
-            <View key={pot.id} style={styles.potCard}>
-              <Text style={styles.potName}>{pot.name}</Text>
+          {potsList.map((pot) => (
+            <TouchableOpacity key={pot.id} style={styles.potCard} activeOpacity={0.8}>
+              <View style={styles.potCardTop}>
+                <Text style={styles.potName}>{pot.name}</Text>
+                {/* Speaker icon — tap for audio explanation */}
+                <TouchableOpacity activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={styles.speakerIcon}>🔊</Text>
+                </TouchableOpacity>
+              </View>
               <Text style={styles.potSubLabel}>{pot.subLabel}</Text>
               <Text style={styles.potAmount}>{pot.amount}</Text>
               <View style={styles.potStatusPill}>
                 <Text style={styles.potStatusText}>{pot.status}</Text>
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
 
-        {/* 4. CHIT (LOCKED) CARD */}
+        {/* ── 5. CHIT (LOCKED) CARD ───────────────────────────────────── */}
         <View style={styles.chitCard}>
           <View style={styles.chitHeaderRow}>
-            <Text style={styles.chitName}>{CHIT_DATA.name}</Text>
-            <Text style={styles.chitLockBadge}>🔒 Locked</Text>
+            <Text style={styles.chitName}>{chit.name}</Text>
+            <View style={styles.chitLockBadge}>
+              <Text style={styles.chitLockText}>🔒 Band hai</Text>
+            </View>
           </View>
-          <Text style={styles.chitAmount}>{CHIT_DATA.amount}</Text>
-          <Text style={styles.chitStatus}>{CHIT_DATA.status}</Text>
+          <Text style={styles.chitAmount}>{chit.amount}</Text>
+          <Text style={styles.chitStatus}>{chit.status}</Text>
         </View>
 
-        {/* 5. SAATHI'S GENTLE NOTE CARD */}
+        {/* ── 6. SAATHI'S GENTLE NOTE ─────────────────────────────────── */}
         <View style={styles.gentleNoteCard}>
           <View style={styles.gentleNoteHeader}>
             <Text style={styles.gentleNoteIcon}>💬</Text>
-            <Text style={styles.gentleNoteHeading}>{GENTLE_NOTE_DATA.heading}</Text>
+            <Text style={styles.gentleNoteHeading}>Saathi ki Baat — Saathi's Gentle Note</Text>
           </View>
-          <Text style={styles.gentleNoteBody}>{GENTLE_NOTE_DATA.body}</Text>
-          <TouchableOpacity style={styles.audioButton} activeOpacity={0.7}>
-            <Text style={styles.audioButtonText}>{GENTLE_NOTE_DATA.buttonText}</Text>
+          <Text style={styles.gentleNoteBody}>
+            Aapka Chit commitment har mahine ₹4,000 hai. Yeh paisa abhi kharcha nahi kar sakte —
+            isliye hum ise "kharch hone wala" paisa nahi maante.{'\n\n'}
+            Your Chit commitment is ₹4,000 every month. Because that money is locked, we leave it
+            out of cash you can spend right now.
+          </Text>
+          <TouchableOpacity style={styles.audioBtn} activeOpacity={0.7}>
+            <Text style={styles.audioBtnText}>🔊 Awaaz mein suniye — Hear audio explanation (30 sec)</Text>
           </TouchableOpacity>
         </View>
 
-        {/* 6. EDUCATION GOAL CARD */}
+        {/* ── 7. EDUCATION GOAL CARD ──────────────────────────────────── */}
         <View style={styles.goalCard}>
-          <Text style={styles.goalTitle}>{EDUCATION_GOAL_DATA.title}</Text>
-          
-          <View style={styles.progressBarTrack}>
-            <View
-              style={[
-                styles.progressBarFill,
-                { width: `${Math.min(goalProgressPercent, 100)}%` },
-              ]}
-            />
+          <View style={styles.goalCardTop}>
+            <View style={styles.goalBadge}>
+              <Text style={styles.goalBadgeText}>{educationGoal.hindiTitle}</Text>
+            </View>
+            <Text style={styles.goalPct}>{Math.round(goalPct)}% done</Text>
+          </View>
+          <Text style={styles.goalTitle}>{educationGoal.title}</Text>
+          <Text style={styles.goalSubtext}>{educationGoal.subtext}</Text>
+
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${goalPct}%` }]} />
           </View>
 
-          <View style={styles.goalDetailsRow}>
-            <Text style={styles.goalSavedText}>{EDUCATION_GOAL_DATA.savedText}</Text>
-            <Text style={styles.goalTargetText}>{EDUCATION_GOAL_DATA.targetText}</Text>
+          <View style={styles.goalMetrics}>
+            <View style={styles.metricItem}>
+              <Text style={styles.metricLabel}>Bachaya / Saved</Text>
+              <Text style={styles.metricValue}>{educationGoal.savedText}</Text>
+            </View>
+            <View style={[styles.metricItem, styles.metricDivider]}>
+              <Text style={styles.metricLabel}>Lakshya / Target</Text>
+              <Text style={styles.metricValue}>{educationGoal.targetText}</Text>
+            </View>
+            <View style={styles.metricItem}>
+              <Text style={styles.metricLabel}>Mahiney / Monthly</Text>
+              <Text style={styles.metricValue}>{educationGoal.monthlyAmount}/mo</Text>
+            </View>
           </View>
-          <Text style={styles.goalSubtext}>{EDUCATION_GOAL_DATA.subtext}</Text>
+
+          <Text style={styles.goalReassurance}>
+            Har mahine {educationGoal.monthlyAmount} bachane se 6 mahine mein lakshya poora hoga. —
+            Saving {educationGoal.monthlyAmount} every month will reach your target in 6 months.
+          </Text>
         </View>
 
-        {/* 7. RECENT EARNINGS CARD */}
+        {/* ── 8. RECENT EARNINGS CARD ─────────────────────────────────── */}
         <View style={styles.earningsCard}>
-          <Text style={styles.earningsHeading}>{RECENT_EARNINGS_DATA.heading}</Text>
-          
+          <Text style={styles.earningsHeading}>{recentEarnings.heading}</Text>
+
           <View style={styles.earningsRow}>
-            {RECENT_EARNINGS_DATA.items.map((item, index) => (
+            {recentEarnings.items.map((item, i) => (
               <View
-                key={index}
-                style={[
-                  styles.earningsItem,
-                  item.isHighlight && styles.earningsItemHighlight,
-                ]}
+                key={i}
+                style={[styles.earningsItem, item.isHighlight && styles.earningsItemHL]}
               >
-                <Text
-                  style={[
-                    styles.earningsItemLabel,
-                    item.isHighlight && styles.earningsItemLabelHighlight,
-                  ]}
-                >
+                <Text style={[styles.earningsLabel, item.isHighlight && styles.earningsLabelHL]}>
                   {item.label}
                 </Text>
-                <Text
-                  style={[
-                    styles.earningsItemAmount,
-                    item.isHighlight && styles.earningsItemAmountHighlight,
-                  ]}
-                >
+                <Text style={styles.earningsHindi}>{item.hindiLabel}</Text>
+                <Text style={[styles.earningsAmt, item.isHighlight && styles.earningsAmtHL]}>
                   {item.amount}
                 </Text>
               </View>
             ))}
           </View>
 
-          <Text style={styles.earningsSubtext}>{RECENT_EARNINGS_DATA.subtext}</Text>
+          <Text style={styles.earningsSubtext}>{recentEarnings.subtext}</Text>
         </View>
+
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+// ─── Styles ────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: COLORS.cream,
-  },
-  scrollView: {
-    flex: 1,
-    backgroundColor: COLORS.cream,
-  },
-  contentContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 42,
-    gap: 16,
-  },
+  safeArea:  { flex: 1, backgroundColor: C.cream },
+  scroll:    { flex: 1, backgroundColor: C.cream },
+  content:   { paddingHorizontal: 16, paddingTop: 12, gap: 16 },
 
-  // 1. Header Row
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  greetingText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: COLORS.forestInk,
-  },
-  notificationButton: {
-    padding: 8,
-    backgroundColor: COLORS.keylimeWash,
-    borderRadius: 999,
-  },
-  bellIcon: {
-    fontSize: 16,
-  },
+  // 1. Header
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 8 },
+  greetingLabel: { fontSize: 11, fontWeight: '600', color: C.forestInk, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 },
+  greetingName:  { fontSize: 18, fontWeight: '700', color: C.forestInk },
+  bellBtn:  { padding: 8, backgroundColor: C.keylime, borderRadius: 999 },
+  bellIcon: { fontSize: 16 },
 
-  // 2. Hero Balance Card
-  heroCard: {
-    backgroundColor: COLORS.sageMist,
-    borderRadius: 14,
-    padding: 28,
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  heroLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: COLORS.charcoal,
-  },
-  heroAmount: {
-    fontSize: 34,
-    fontWeight: '700',
-    color: COLORS.forestInk,
-    marginVertical: 4,
-  },
-  heroSubtext: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: COLORS.charcoal,
-    opacity: 0.9,
-  },
+  // 2. Hero
+  heroCard: { backgroundColor: C.sage, borderRadius: 14, padding: 24, gap: 6 },
+  heroEyebrow: { fontSize: 10, fontWeight: '600', color: C.forestInk, letterSpacing: 1.2, textTransform: 'uppercase' },
+  heroLabel:   { fontSize: 13, fontWeight: '500', color: C.charcoal },
+  heroAmount:  { fontSize: 36, fontWeight: '700', color: C.forestInk, marginVertical: 4 },
+  heroSubtext: { fontSize: 13, fontWeight: '400', color: C.charcoal, lineHeight: 18 },
 
-  // 3. Section Header & Pots Grid
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    marginTop: 8,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: COLORS.forestInk,
-  },
-  sectionSubtitle: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: COLORS.charcoal,
-    opacity: 0.7,
-  },
-  potsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  potCard: {
-    width: '48%',
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.sageMist,
-    borderRadius: 14,
-    padding: 16,
-    gap: 4,
-    justifyContent: 'space-between',
-  },
-  potName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: COLORS.forestInk,
-  },
-  potSubLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: COLORS.charcoal,
-    opacity: 0.8,
-  },
-  potAmount: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: COLORS.forestInk,
-    marginTop: 6,
-    marginBottom: 8,
-  },
-  potStatusPill: {
-    backgroundColor: COLORS.keylimeWash,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    alignSelf: 'flex-start',
-  },
-  potStatusText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: COLORS.forestInk,
-  },
+  // 3. Safe pill
+  safePillRow: { alignItems: 'flex-start' },
+  safePill:    { backgroundColor: C.keylime, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 16, borderWidth: 1, borderColor: '#C8EDCA' },
+  safePillText:{ fontSize: 13, fontWeight: '600', color: C.forestInk },
 
-  // 4. Chit (Locked) Card
-  chitCard: {
-    backgroundColor: COLORS.slateHush,
-    borderRadius: 14,
-    padding: 20,
-    gap: 6,
-  },
-  chitHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  chitName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.forestInk,
-  },
-  chitLockBadge: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.forestInk,
-  },
-  chitAmount: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: COLORS.forestInk,
-    marginVertical: 2,
-  },
-  chitStatus: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: COLORS.charcoal,
-  },
+  // 4. Pots
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 4 },
+  sectionTitle:    { fontSize: 16, fontWeight: '700', color: C.forestInk },
+  sectionSubtitle: { fontSize: 12, fontWeight: '500', color: C.charcoal, opacity: 0.6 },
+  potsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  potCard: { width: '48%', backgroundColor: C.white, borderWidth: 1, borderColor: C.sage, borderRadius: 14, padding: 16, gap: 4 },
+  potCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  potName:   { fontSize: 14, fontWeight: '700', color: C.forestInk, flex: 1 },
+  speakerIcon: { fontSize: 14 },
+  potSubLabel: { fontSize: 11, fontWeight: '400', color: C.charcoal, opacity: 0.75 },
+  potAmount:  { fontSize: 20, fontWeight: '700', color: C.forestInk, marginTop: 6, marginBottom: 6 },
+  potStatusPill: { backgroundColor: C.keylime, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999, alignSelf: 'flex-start' },
+  potStatusText: { fontSize: 11, fontWeight: '600', color: C.forestInk },
 
-  // 5. Saathi's Gentle Note
-  gentleNoteCard: {
-    backgroundColor: COLORS.keylimeWash,
-    borderRadius: 14,
-    padding: 20,
-    gap: 12,
-  },
-  gentleNoteHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  gentleNoteIcon: {
-    fontSize: 16,
-  },
-  gentleNoteHeading: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.forestInk,
-  },
-  gentleNoteBody: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: COLORS.charcoal,
-    lineHeight: 20,
-  },
-  audioButton: {
-    borderWidth: 1.5,
-    borderColor: COLORS.forestInk,
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    alignSelf: 'flex-start',
-    backgroundColor: 'transparent',
-    marginTop: 4,
-  },
-  audioButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.forestInk,
-  },
+  // 5. Chit
+  chitCard:      { backgroundColor: C.slate, borderRadius: 14, padding: 20, gap: 6 },
+  chitHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  chitName:      { fontSize: 16, fontWeight: '700', color: C.forestInk },
+  chitLockBadge: { backgroundColor: 'rgba(255,255,255,0.45)', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999 },
+  chitLockText:  { fontSize: 12, fontWeight: '600', color: C.forestInk },
+  chitAmount:    { fontSize: 26, fontWeight: '700', color: C.forestInk, marginVertical: 2 },
+  chitStatus:    { fontSize: 13, fontWeight: '400', color: C.charcoal },
 
-  // 6. Education Goal Card
-  goalCard: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1.5,
-    borderColor: COLORS.sageMist,
-    borderRadius: 14,
-    padding: 20,
-    gap: 12,
-  },
-  goalTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.forestInk,
-  },
-  progressBarTrack: {
-    height: 10,
-    backgroundColor: COLORS.keylimeWash,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: COLORS.forestInk,
-    borderRadius: 999,
-  },
-  goalDetailsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  goalSavedText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.forestInk,
-  },
-  goalTargetText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: COLORS.charcoal,
-  },
-  goalSubtext: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: COLORS.charcoal,
-    opacity: 0.8,
-  },
+  // 6. Gentle Note
+  gentleNoteCard:    { backgroundColor: C.keylime, borderRadius: 14, padding: 20, gap: 12 },
+  gentleNoteHeader:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  gentleNoteIcon:    { fontSize: 16 },
+  gentleNoteHeading: { fontSize: 15, fontWeight: '700', color: C.forestInk, flex: 1 },
+  gentleNoteBody:    { fontSize: 13, fontWeight: '400', color: C.charcoal, lineHeight: 20 },
+  audioBtn:     { borderWidth: 1.5, borderColor: C.forestInk, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16, alignSelf: 'flex-start' },
+  audioBtnText: { fontSize: 13, fontWeight: '600', color: C.forestInk },
 
-  // 7. Recent Earnings Card
-  earningsCard: {
-    backgroundColor: COLORS.sageMist,
-    borderRadius: 14,
-    padding: 20,
-    gap: 14,
-  },
-  earningsHeading: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.forestInk,
-  },
-  earningsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  earningsItem: {
-    flex: 1,
-    backgroundColor: COLORS.cream,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    gap: 4,
-  },
-  earningsItemHighlight: {
-    backgroundColor: COLORS.keylimeWash,
-    borderWidth: 1.5,
-    borderColor: COLORS.forestInk,
-  },
-  earningsItemLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: COLORS.charcoal,
-  },
-  earningsItemLabelHighlight: {
-    fontWeight: '600',
-    color: COLORS.forestInk,
-  },
-  earningsItemAmount: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.forestInk,
-  },
-  earningsItemAmountHighlight: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.forestInk,
-  },
-  earningsSubtext: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: COLORS.charcoal,
-    opacity: 0.8,
-  },
+  // 7. Education Goal
+  goalCard:    { backgroundColor: C.white, borderWidth: 1.5, borderColor: C.sage, borderRadius: 14, padding: 20, gap: 12 },
+  goalCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  goalBadge:   { backgroundColor: C.keylime, paddingVertical: 5, paddingHorizontal: 12, borderRadius: 999 },
+  goalBadgeText: { fontSize: 12, fontWeight: '600', color: C.forestInk },
+  goalPct:     { fontSize: 13, fontWeight: '700', color: C.forestInk },
+  goalTitle:   { fontSize: 17, fontWeight: '700', color: C.forestInk },
+  goalSubtext: { fontSize: 12, fontWeight: '400', color: C.charcoal, lineHeight: 17 },
+  progressTrack: { height: 10, backgroundColor: C.keylime, borderRadius: 999, overflow: 'hidden' },
+  progressFill:  { height: '100%', backgroundColor: C.forestInk, borderRadius: 999 },
+  goalMetrics:   { flexDirection: 'row', backgroundColor: C.keylime, borderRadius: 10, padding: 12 },
+  metricItem:    { flex: 1, alignItems: 'center', gap: 2 },
+  metricDivider: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: C.border },
+  metricLabel:   { fontSize: 10, fontWeight: '600', color: C.charcoal, textAlign: 'center', lineHeight: 14 },
+  metricValue:   { fontSize: 14, fontWeight: '700', color: C.forestInk },
+  goalReassurance: { fontSize: 12, fontWeight: '400', color: C.charcoal, lineHeight: 18 },
+
+  // 8. Recent Earnings
+  earningsCard:    { backgroundColor: C.sage, borderRadius: 14, padding: 20, gap: 14 },
+  earningsHeading: { fontSize: 15, fontWeight: '700', color: C.forestInk },
+  earningsRow:     { flexDirection: 'row', gap: 8 },
+  earningsItem:    { flex: 1, backgroundColor: C.cream, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 6, alignItems: 'center', gap: 3 },
+  earningsItemHL:  { backgroundColor: C.keylime, borderWidth: 1.5, borderColor: C.forestInk },
+  earningsLabel:   { fontSize: 12, fontWeight: '600', color: C.charcoal },
+  earningsLabelHL: { color: C.forestInk },
+  earningsHindi:   { fontSize: 10, fontWeight: '400', color: C.charcoal, opacity: 0.7 },
+  earningsAmt:     { fontSize: 14, fontWeight: '700', color: C.forestInk },
+  earningsAmtHL:   { fontSize: 16 },
+  earningsSubtext: { fontSize: 11, fontWeight: '400', color: C.charcoal, opacity: 0.8, lineHeight: 16 },
 });
