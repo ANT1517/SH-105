@@ -25,6 +25,7 @@ class FinancialState(BaseModel):
     goal: Optional[GoalData] = None
 
 class GuidanceRequest(FinancialState):
+    user_id: Optional[str] = None  # optional; used only to attribute the audit-log entry in Person B
     question: Optional[str] = None
     request_mode: Optional[str] = None
     literacy_tier: Optional[int] = None

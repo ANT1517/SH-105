@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 import os
 from dotenv import load_dotenv
 
@@ -20,6 +20,8 @@ from ..literacy.quiz import calculate_tier
 from ..contracts.simulator import SimulatorInput
 from ..simulator.service import SimulatorService
 from ..contracts.safety import SafetyRequest
+from ..safety.rules import detect_signals
+from ..safety.escalation import escalate_signals
 from ..safety.service import SafetyService
 from ..integration.person_a import PersonAIntegrationRequest
 from ..integration.person_b import PersonBClient, UnknownUserError
@@ -83,6 +85,7 @@ def get_ocr_service() -> OCRService:
 @app.post("/api/v1/integration/person_a/guidance", response_model=PersonCResponse)
 async def person_a_integration(
     request: PersonAIntegrationRequest,
+    background_tasks: BackgroundTasks,
     person_b_client: PersonBClient = Depends(get_person_b_client),
     education_service: EducationService = Depends(get_education_service),
     personalization_service: PersonalizationService = Depends(get_personalization_service),
@@ -91,9 +94,18 @@ async def person_a_integration(
     """
     Real Integration API that coordinates fetching B's financial state and routing to the right internal C service.
     """
+    def audited(response: PersonCResponse) -> PersonCResponse:
+        # Fire-and-forget (runs after the response is sent); only for successfully produced guidance.
+        background_tasks.add_task(
+            person_b_client.log_audit, request.user_id, "GUIDANCE_GIVEN", "guidance",
+            {"question": request.question, "request_mode": request.request_mode,
+             "source_class": response.source_class, "mode": response.mode}
+        )
+        return response
+
     if request.request_mode == "education":
         # Education mode does not require financial state
-        return education_service.get_guidance(request.question or "")
+        return audited(education_service.get_guidance(request.question or ""))
         
     # For personalized and simulator modes, we need the financial state from Person B
     try:
@@ -129,7 +141,7 @@ async def person_a_integration(
             request_mode="personalized",
             literacy_tier=request.literacy_tier
         )
-        return personalization_service.get_guidance(guidance_req)
+        return audited(personalization_service.get_guidance(guidance_req))
         
     elif request.request_mode == "simulator":
         # Ensure we have goal data for the simulator from Person B
@@ -150,21 +162,39 @@ async def person_a_integration(
             literacy_tier=request.literacy_tier,
             question=request.question
         )
-        return simulator_service.get_simulation(sim_input)
+        return audited(simulator_service.get_simulation(sim_input))
 
 @app.post("/api/v1/safety/check", response_model=PersonCResponse)
 async def check_safety(
     request: SafetyRequest,
-    safety_service: SafetyService = Depends(get_safety_service)
+    background_tasks: BackgroundTasks,
+    safety_service: SafetyService = Depends(get_safety_service),
+    person_b_client: PersonBClient = Depends(get_person_b_client)
 ):
-    return safety_service.check_message(request)
+    response = safety_service.check_message(request)
+    # Deterministic and cheap; the message text itself is deliberately NOT logged (may contain PII/OTPs).
+    flag = escalate_signals(detect_signals(request.message))
+    background_tasks.add_task(
+        person_b_client.log_audit, request.user_id, "SAFETY_CHECK_PERFORMED", "safety_check",
+        {"classification": flag.classification, "signal_count": len(flag.signals),
+         "message_length": len(request.message), "source_class": response.source_class}
+    )
+    return response
 
 @app.post("/api/v1/simulator", response_model=PersonCResponse)
 async def get_simulation(
     request: SimulatorInput,
-    simulator_service: SimulatorService = Depends(get_simulator_service)
+    background_tasks: BackgroundTasks,
+    simulator_service: SimulatorService = Depends(get_simulator_service),
+    person_b_client: PersonBClient = Depends(get_person_b_client)
 ):
-    return simulator_service.get_simulation(request)
+    response = simulator_service.get_simulation(request)
+    background_tasks.add_task(
+        person_b_client.log_audit, request.user_id, "SIMULATOR_RUN", "simulation",
+        {"scenario": request.scenario, "target": request.target, "saved": request.saved,
+         "source_class": response.source_class}
+    )
+    return response
 
 @app.post("/api/v1/literacy_quiz", response_model=QuizResponse)
 async def submit_quiz(request: QuizRequest):
@@ -173,30 +203,40 @@ async def submit_quiz(request: QuizRequest):
 
 @app.post("/api/v1/guidance", response_model=PersonCResponse)
 async def get_guidance(
-    request: GuidanceRequest, 
+    request: GuidanceRequest,
+    background_tasks: BackgroundTasks,
     education_service: EducationService = Depends(get_education_service),
-    personalization_service: PersonalizationService = Depends(get_personalization_service)
+    personalization_service: PersonalizationService = Depends(get_personalization_service),
+    person_b_client: PersonBClient = Depends(get_person_b_client)
 ):
     if request.request_mode == "education":
         if not request.question:
             raise HTTPException(status_code=400, detail="Question is required for education mode")
-        return education_service.get_guidance(request.question)
-        
+        response = education_service.get_guidance(request.question)
+
     elif request.request_mode == "personalized":
         if not request.question:
             raise HTTPException(status_code=400, detail="Question is required for personalized mode")
-        return personalization_service.get_guidance(request)
+        response = personalization_service.get_guidance(request)
 
-    # Phase 1 stable logic fallback
-    if not request.business or not request.goal:
-        raise HTTPException(status_code=400, detail="Invalid financial state: missing business or goal data.")
-    
-    return PersonCResponse(
-        response_text="Based on your goal to save for Education, consider comparing the interest rates.",
-        source_class="research",
-        mode="personalized",
-        disclaimer=True
+    else:
+        # Phase 1 stable logic fallback
+        if not request.business or not request.goal:
+            raise HTTPException(status_code=400, detail="Invalid financial state: missing business or goal data.")
+
+        response = PersonCResponse(
+            response_text="Based on your goal to save for Education, consider comparing the interest rates.",
+            source_class="research",
+            mode="personalized",
+            disclaimer=True
+        )
+
+    background_tasks.add_task(
+        person_b_client.log_audit, request.user_id, "GUIDANCE_GIVEN", "guidance",
+        {"question": request.question, "request_mode": request.request_mode,
+         "source_class": response.source_class, "mode": response.mode}
     )
+    return response
 
 @app.get("/health")
 async def health_check():

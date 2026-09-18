@@ -1,7 +1,11 @@
+import logging
 import os
+import uuid
 import httpx
 from typing import Optional, Dict, Any
 from app.contracts.input import FinancialState, BusinessData, BusinessLastEntry, GoalData
+
+logger = logging.getLogger("person_c.person_b")
 
 def map_b_to_c_state(data: dict) -> FinancialState:
     """
@@ -55,6 +59,7 @@ class PersonBClient:
     def __init__(self):
         self.base_url = os.environ.get("PERSON_B_API_URL", "http://localhost:5000")
         self.timeout = int(os.environ.get("PERSON_B_TIMEOUT", "5"))
+        self.audit_timeout = float(os.environ.get("PERSON_B_AUDIT_TIMEOUT", "2"))
 
     async def get_financial_state(self, user_id: str) -> Optional[FinancialState]:
         """
@@ -85,3 +90,30 @@ class PersonBClient:
         except (httpx.RequestError, httpx.HTTPError, ValueError, TypeError):
             # Includes timeouts, connection errors, and JSON parsing errors
             return None
+
+    async def log_audit(self, user_id: Optional[str], action: str, entity_type: str,
+                        metadata: Optional[Dict[str, Any]] = None) -> bool:
+        """
+        Records an event in Person B's audit log (POST /api/audit-log). Best effort: never raises.
+        Returns True if Person B accepted it. Callers run this as a background task so it can
+        never delay or fail the user-facing response.
+        """
+        if not user_id:
+            return False  # nothing to attribute the entry to (Person B would refuse it)
+        payload = {
+            "user_id": user_id,
+            "action": action,
+            "entity_type": entity_type,
+            "entity_id": uuid.uuid4().hex,
+            "metadata": metadata or {},
+        }
+        try:
+            async with httpx.AsyncClient(timeout=self.audit_timeout) as client:
+                response = await client.post(f"{self.base_url}/api/audit-log", json=payload)
+            if response.status_code != 201:
+                logger.warning("Audit log rejected by Person B: %s %s", response.status_code, action)
+                return False
+            return True
+        except Exception as e:  # noqa: BLE001 - audit must never break the caller
+            logger.warning("Audit log POST failed (%s): %r", action, e)
+            return False

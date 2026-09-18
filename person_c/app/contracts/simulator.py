@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Literal
 
 class SimulatorInput(BaseModel):
+    user_id: Optional[str] = None  # optional; used only to attribute the audit-log entry in Person B
     scenario: Literal["savings_goal_feasibility"]
     target: float = Field(..., description="Target savings goal amount")
     saved: float = Field(..., description="Current saved amount")
