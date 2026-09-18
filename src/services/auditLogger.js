@@ -10,8 +10,18 @@ const inMemoryAuditLogs = [];
 
 /**
  * Logs an event to audit log.
+ * If a DB client is provided, the query runs atomically on that client.
  */
-async function logEvent({ user_id, action, entity_type, entity_id, previous_state = null, new_state = null, metadata = {} }) {
+async function logEvent({
+  user_id,
+  action,
+  entity_type,
+  entity_id,
+  previous_state = null,
+  new_state = null,
+  metadata = {},
+  client = null
+}) {
   const auditEntry = {
     id: inMemoryAuditLogs.length + 1,
     user_id: user_id || 'meera_001',
@@ -24,31 +34,59 @@ async function logEvent({ user_id, action, entity_type, entity_id, previous_stat
     created_at: new Date().toISOString()
   };
 
-  inMemoryAuditLogs.unshift(auditEntry);
+  if (client) {
+    await client.query(
+      `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, previous_state, new_state, metadata, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        auditEntry.user_id,
+        auditEntry.action,
+        auditEntry.entity_type,
+        auditEntry.entity_id,
+        JSON.stringify(previous_state),
+        JSON.stringify(new_state),
+        JSON.stringify(metadata),
+        auditEntry.created_at
+      ]
+    );
+    inMemoryAuditLogs.unshift(auditEntry);
+  } else {
+    inMemoryAuditLogs.unshift(auditEntry);
 
-  // If Postgres is connected, persist to DB asynchronously
-  if (isConnected()) {
-    try {
-      await query(
-        `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, previous_state, new_state, metadata, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          auditEntry.user_id,
-          auditEntry.action,
-          auditEntry.entity_type,
-          auditEntry.entity_id,
-          JSON.stringify(previous_state),
-          JSON.stringify(new_state),
-          JSON.stringify(metadata),
-          auditEntry.created_at
-        ]
-      );
-    } catch (err) {
-      console.warn('[AuditLogger] Could not persist to DB:', err.message);
+    // If Postgres is connected, persist to DB asynchronously
+    if (isConnected()) {
+      try {
+        await query(
+          `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, previous_state, new_state, metadata, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            auditEntry.user_id,
+            auditEntry.action,
+            auditEntry.entity_type,
+            auditEntry.entity_id,
+            JSON.stringify(previous_state),
+            JSON.stringify(new_state),
+            JSON.stringify(metadata),
+            auditEntry.created_at
+          ]
+        );
+      } catch (err) {
+        console.warn('[AuditLogger] Could not persist to DB:', err.message);
+      }
     }
   }
 
   return auditEntry;
+}
+
+/**
+ * Removes an in-memory audit log entry by entity_id (used on rollback).
+ */
+function removeAuditLogByEntityId(entityId) {
+  const idx = inMemoryAuditLogs.findIndex(l => l.entity_id === String(entityId));
+  if (idx !== -1) {
+    inMemoryAuditLogs.splice(idx, 1);
+  }
 }
 
 /**
@@ -82,5 +120,6 @@ function clearAuditLogs() {
 module.exports = {
   logEvent,
   getAuditLogs,
-  clearAuditLogs
+  clearAuditLogs,
+  removeAuditLogByEntityId
 };

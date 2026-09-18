@@ -106,11 +106,15 @@ async function getFinancialState(userId = 'meera_001') {
         );
       }
     } catch (err) {
+      // In STRICT_POSTGRES mode: never silently fall back to memory
+      if (process.env.STRICT_POSTGRES === 'true') {
+        throw new Error(`[Store] PostgreSQL query failed in STRICT_POSTGRES mode: ${err.message}`);
+      }
       console.warn('[Store] Falling back to memory store:', err.message);
     }
   }
 
-  // Memory store fallback
+  // Memory store fallback (only in non-strict / development mode)
   return formatUnifiedFinancialState(
     { user_id: activeUserState.user_id },
     activeUserState.pots,
@@ -118,6 +122,15 @@ async function getFinancialState(userId = 'meera_001') {
     activeUserState.goal,
     activeUserState.transactions.slice(0, 10)
   );
+}
+
+/**
+ * Syncs a single pot value in memory from the confirmed PostgreSQL result.
+ * Called ONLY after a successful database COMMIT — never before.
+ * This keeps the memory cache consistent with the real source of truth.
+ */
+function syncMemoryPotFromDb(potType, confirmedAmount) {
+  activeUserState.pots[potType] = Number(confirmedAmount);
 }
 
 /**
@@ -278,5 +291,6 @@ module.exports = {
   getLedgerEntries,
   updateGoalProgress,
   resetState,
+  syncMemoryPotFromDb,
   activeUserState
 };

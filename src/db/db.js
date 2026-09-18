@@ -2,38 +2,65 @@ const { Pool } = require('pg');
 const path = require('path');
 const fs = require('fs');
 
+// ─── SSL Configuration ────────────────────────────────────────────────────────
+// Supabase and most managed PostgreSQL providers require SSL.
+// If DATABASE_SSL is explicitly 'false', disable it (local dev without SSL).
+// Otherwise default to SSL enabled with rejectUnauthorized: false (for poolers).
+function buildSslConfig() {
+  const sslEnv = process.env.DATABASE_SSL;
+  if (sslEnv === 'false') return false;
+  // Enable SSL for Supabase and other managed providers
+  return { rejectUnauthorized: false };
+}
+
+// ─── Pool ─────────────────────────────────────────────────────────────────────
+// DATABASE_URL must be set in .env. No hardcoded credentials.
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/saathi_db',
-  ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  connectionString: process.env.DATABASE_URL,
+  ssl: buildSslConfig(),
   max: 10,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 8000,   // Increased for Supabase cold-start latency
+  query_timeout: 15000,
 });
 
 let isConnected = false;
+let connectionError = null;
 
-// Check connection on startup
+// ─── Connection Check ─────────────────────────────────────────────────────────
 async function checkDatabaseConnection() {
+  if (!process.env.DATABASE_URL) {
+    connectionError = 'DATABASE_URL is not set in environment.';
+    isConnected = false;
+    return false;
+  }
+
   try {
     const client = await pool.connect();
-    isConnected = true;
+    await client.query('SELECT 1');
     client.release();
+    isConnected = true;
+    connectionError = null;
     return true;
   } catch (err) {
     isConnected = false;
+    // Store error type/code without credentials
+    connectionError = `${err.code || 'CONNECTION_ERROR'}: ${err.message.replace(/(postgresql?:\/\/)[^@]+@/gi, '$1***@')}`;
     return false;
   }
 }
 
-// Execute query helper
+// ─── Query Helper ─────────────────────────────────────────────────────────────
 async function query(text, params) {
   if (process.env.STRICT_POSTGRES === 'true' && !isConnected) {
-    throw new Error('STRICT_POSTGRES mode enabled but PostgreSQL is unreachable.');
+    throw new Error(
+      `STRICT_POSTGRES mode: PostgreSQL is unreachable. ${connectionError || 'Check DATABASE_URL and network.'}`
+    );
   }
   return pool.query(text, params);
 }
 
-// Transaction execution helper with atomic rollback on failure
+// ─── Atomic Transaction Helper ────────────────────────────────────────────────
 async function executeTransaction(callback) {
   const client = await pool.connect();
   try {
@@ -49,7 +76,7 @@ async function executeTransaction(callback) {
   }
 }
 
-// Run schema initialization
+// ─── Schema Initialization ────────────────────────────────────────────────────
 async function initSchema() {
   try {
     const schemaPath = path.join(__dirname, 'schema.sql');
@@ -58,14 +85,17 @@ async function initSchema() {
       await pool.query(sql);
       return true;
     }
+    return false;
   } catch (err) {
     if (process.env.STRICT_POSTGRES === 'true') {
       throw new Error(`[DB] Schema init failed in STRICT_POSTGRES mode: ${err.message}`);
     }
+    console.warn('[DB] Schema init failed (non-strict):', err.message);
     return false;
   }
 }
 
+// ─── Exports ──────────────────────────────────────────────────────────────────
 module.exports = {
   pool,
   query,
@@ -73,4 +103,5 @@ module.exports = {
   checkDatabaseConnection,
   initSchema,
   isConnected: () => isConnected,
+  getConnectionError: () => connectionError,
 };

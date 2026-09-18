@@ -72,19 +72,20 @@ function mapCategoryToPot(category) {
 }
 
 /**
- * Calculates total balance dynamically across all pots.
- * Note: Dynamic sum avoids hard-coding any disputed total.
+ * Calculates total balance dynamically across the FIVE canonical Money Pot Map pots.
+ * Business is a separately-tracked informal ledger pot and is NOT included in this sum.
+ * Canonical pots: cash + bank + shg + chit_committed + post_office
  */
 function calculateTotalBalance(pots) {
   if (!pots || typeof pots !== 'object') return 0;
-  
+
   const values = [
     Number(pots.cash) || 0,
     Number(pots.bank) || 0,
     Number(pots.shg) || 0,
     Number(pots.chit_committed) || 0,
     Number(pots.post_office) || 0,
-    Number(pots.business) || 0,
+    // NOTE: pots.business is intentionally excluded from this sum.
   ];
 
   return values.reduce((sum, val) => sum + val, 0);

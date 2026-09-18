@@ -2,12 +2,22 @@ const express = require('express');
 const router = express.Router();
 const { checkDuplicate, recordTransactionInCache } = require('../services/deduplicationService');
 const { mapCategoryToPot } = require('../services/potCalculator');
-const { addTransaction, updatePotBalance, getFinancialState } = require('../services/financialStateStore');
-const { logEvent } = require('../services/auditLogger');
+const { getFinancialState, syncMemoryPotFromDb } = require('../services/financialStateStore');
+const { logEvent, removeAuditLogByEntityId } = require('../services/auditLogger');
+const { executeTransaction, isConnected } = require('../db/db');
 
 /**
  * POST /api/transactions
  * Ingests normalized financial input from Person A.
+ *
+ * When PostgreSQL is connected:
+ *   All writes (transaction insert, pot update, audit log) execute inside a
+ *   single BEGIN/COMMIT block using the same DB client.
+ *   Any failure triggers ROLLBACK — no partial state is ever committed.
+ *
+ * When PostgreSQL is not connected:
+ *   Falls back to in-memory only (development/offline mode).
+ *
  * Strictly adheres to Person A contract without modifying payload schema.
  */
 router.post('/', async (req, res) => {
@@ -28,7 +38,7 @@ router.post('/', async (req, res) => {
       confidence
     } = body;
 
-    // Field-by-field strict validation for Person A Contract
+    // ─── Field-by-field strict validation (Person A Contract) ────────────────
     if (user_id === undefined || user_id === null || typeof user_id !== 'string' || user_id.trim() === '') {
       return res.status(400).json({ error: 'Field "user_id" is required and must be a non-empty string' });
     }
@@ -71,7 +81,12 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Field "parsed_transaction.amount" must be greater than zero' });
     }
 
-    if (parsed_transaction.category === undefined || parsed_transaction.category === null || typeof parsed_transaction.category !== 'string' || parsed_transaction.category.trim() === '') {
+    if (
+      parsed_transaction.category === undefined ||
+      parsed_transaction.category === null ||
+      typeof parsed_transaction.category !== 'string' ||
+      parsed_transaction.category.trim() === ''
+    ) {
       return res.status(400).json({ error: 'Field "parsed_transaction.category" is required and must be a non-empty string' });
     }
 
@@ -82,25 +97,24 @@ router.post('/', async (req, res) => {
       }
     }
 
+    const trimmedUserId = user_id.trim();
     const txType = parsed_transaction.type.trim().toLowerCase();
     const category = parsed_transaction.category.trim();
+    const confValue = confidence !== undefined && confidence !== null ? Number(confidence) : 1.0;
+    const createdAt = new Date().toISOString();
 
-    // Step 1: Duplicate Transaction Detection
+    // ─── Step 1: Duplicate detection (memory cache — no DB write) ────────────
     const dupCheck = checkDuplicate({
-      user_id: user_id.trim(),
+      user_id: trimmedUserId,
       channel: channel.trim(),
       raw_text,
       normalized_text,
-      parsed_transaction: {
-        type: txType,
-        amount,
-        category
-      }
+      parsed_transaction: { type: txType, amount, category }
     });
 
     if (dupCheck.isDuplicate) {
       await logEvent({
-        user_id: user_id.trim(),
+        user_id: trimmedUserId,
         action: 'DUPLICATE_TRANSACTION_BLOCKED',
         entity_type: 'transaction',
         entity_id: dupCheck.hash,
@@ -114,13 +128,13 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Step 2: Internal Category-to-Pot Mapping (Person B responsibility)
+    // ─── Step 2: Map category → pot ──────────────────────────────────────────
     const targetPot = mapCategoryToPot(category);
+    const potOperation = (txType === 'expense') ? 'subtract' : 'add';
 
-    // Step 3: Create transaction record
     const txRecord = {
       transaction_hash: dupCheck.hash,
-      user_id: user_id.trim(),
+      user_id: trimmedUserId,
       channel: channel.trim(),
       input_type: input_type.trim(),
       raw_text,
@@ -129,29 +143,94 @@ router.post('/', async (req, res) => {
       amount,
       category,
       target_pot: targetPot,
-      confidence: confidence !== undefined && confidence !== null ? Number(confidence) : 1.0,
-      created_at: new Date().toISOString()
+      confidence: confValue,
+      created_at: createdAt
     };
 
-    await addTransaction(txRecord);
+    // ─── Step 3: Atomic database transaction ─────────────────────────────────
+    // All three writes (transaction, pot update, audit log) share ONE connection.
+    // If ANY step throws, the entire transaction is rolled back automatically.
+    let potUpdate = null;
+
+    if (isConnected()) {
+      await executeTransaction(async (client) => {
+        // 3a. Ensure user exists (upsert) so FK constraint is satisfied
+        await client.query(
+          `INSERT INTO users (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`,
+          [trimmedUserId, trimmedUserId]
+        );
+
+        // 3b. Insert transaction record
+        await client.query(
+          `INSERT INTO transactions
+             (transaction_hash, user_id, channel, input_type, raw_text, normalized_text,
+              tx_type, amount, category, target_pot, confidence, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+          [
+            txRecord.transaction_hash, txRecord.user_id, txRecord.channel,
+            txRecord.input_type, txRecord.raw_text, txRecord.normalized_text,
+            txRecord.tx_type, txRecord.amount, txRecord.category,
+            txRecord.target_pot, txRecord.confidence, txRecord.created_at
+          ]
+        );
+
+        // 3c. Upsert pot balance atomically
+        const potResult = await client.query(
+          `INSERT INTO pots (user_id, pot_type, amount, updated_at)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (user_id, pot_type) DO UPDATE
+             SET amount = CASE
+               WHEN $4 = 'subtract'
+               THEN GREATEST(0, pots.amount - $3)
+               ELSE pots.amount + $3
+             END,
+             updated_at = NOW()
+           RETURNING amount`,
+          [trimmedUserId, targetPot, amount, potOperation]
+        );
+
+        const newAmount = potResult.rows[0] ? Number(potResult.rows[0].amount) : amount;
+        potUpdate = { potType: targetPot, newAmount };
+
+        // 3d. Insert audit log record atomically using same client
+        await logEvent({
+          user_id: trimmedUserId,
+          action: 'TRANSACTION_INGESTED',
+          entity_type: 'transaction',
+          entity_id: txRecord.transaction_hash,
+          new_state: potUpdate,
+          metadata: { txRecord, targetPot },
+          client
+        });
+      });
+
+      // ─── Step 4: Memory sync AFTER successful commit ──────────────────────
+      // Memory is never written before the DB commits.
+      if (potUpdate) {
+        syncMemoryPotFromDb(targetPot, potUpdate.newAmount);
+      }
+    } else {
+      // ─── Offline / development fallback ──────────────────────────────────
+      // Memory-only path: used only when PostgreSQL is not available.
+      const { addTransaction, updatePotBalance } = require('../services/financialStateStore');
+      await addTransaction(txRecord);
+      potUpdate = await updatePotBalance(trimmedUserId, targetPot, amount, potOperation);
+
+      await logEvent({
+        user_id: trimmedUserId,
+        action: 'TRANSACTION_INGESTED',
+        entity_type: 'transaction',
+        entity_id: txRecord.transaction_hash,
+        new_state: potUpdate,
+        metadata: { txRecord, targetPot }
+      });
+    }
+
+    // ─── Step 5: Record in deduplication cache (post-commit only) ────────────
     recordTransactionInCache(dupCheck.hash, txRecord);
 
-    // Step 4: Update target pot balance
-    const potOperation = (txType === 'expense') ? 'subtract' : 'add';
-    const potUpdate = await updatePotBalance(user_id.trim(), targetPot, amount, potOperation);
-
-    // Step 5: Immutable Audit Logging
-    await logEvent({
-      user_id: user_id.trim(),
-      action: 'TRANSACTION_INGESTED',
-      entity_type: 'transaction',
-      entity_id: dupCheck.hash,
-      new_state: potUpdate,
-      metadata: { txRecord, targetPot }
-    });
-
-    // Step 6: Return updated financial state
-    const updatedState = await getFinancialState(user_id.trim());
+    // ─── Step 6: Return updated financial state ───────────────────────────────
+    const updatedState = await getFinancialState(trimmedUserId);
 
     return res.status(201).json({
       status: 'success',
@@ -162,7 +241,10 @@ router.post('/', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('[Transactions Route] Error:', err.message);
+    if (dupCheck && dupCheck.hash) {
+      removeAuditLogByEntityId(dupCheck.hash);
+    }
+    console.error('[Transactions Route] Atomic transaction failed:', err.message);
     return res.status(500).json({ error: 'Internal server error processing transaction' });
   }
 });

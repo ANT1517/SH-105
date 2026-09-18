@@ -46,8 +46,10 @@ describe('Edge: Financial State Invariants (Part 4)', () => {
     expect(typeof data.goal.target).toBe('number');
     expect(typeof data.goal.saved).toBe('number');
 
-    // Invariant 8: Total balance internally consistent
-    const potSum = Object.values(data.pots).reduce((sum, v) => sum + Number(v), 0);
+    // Invariant 8: total_balance = sum of the 5 canonical Money Pot Map pots.
+    // Business is tracked separately via the ledger and is intentionally excluded.
+    const canonicalPots = ['cash', 'bank', 'shg', 'chit_committed', 'post_office'];
+    const potSum = canonicalPots.reduce((sum, key) => sum + (Number(data.pots[key]) || 0), 0);
     expect(data.total_balance).toBe(potSum);
   }
 

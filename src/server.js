@@ -3,6 +3,7 @@ const cors = require('cors');
 require('dotenv').config();
 
 const { checkDatabaseConnection, initSchema, isConnected } = require('./db/db');
+const { seedMeera } = require('./db/seed');
 const financialStateRoute = require('./routes/financialState');
 const transactionsRoute = require('./routes/transactions');
 const businessLedgerRoute = require('./routes/businessLedger');
@@ -72,6 +73,7 @@ async function startServer() {
   const dbOk = await checkDatabaseConnection();
   if (dbOk) {
     await initSchema();
+    await seedMeera(); // Idempotent — safe on every restart
   }
 
   if (process.env.NODE_ENV !== 'test') {
