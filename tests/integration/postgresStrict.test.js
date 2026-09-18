@@ -4,6 +4,20 @@ const { getFinancialState } = require('../../src/services/financialStateStore');
 
 describe('Strict PostgreSQL Live Database Verification Suite', () => {
   let dbConnected = false;
+  // Users created by tests; deleted in afterEach so cleanup runs whether the test passes or fails.
+  const createdUsers = [];
+  const newTestUser = (prefix) => {
+    const id = `${prefix}_${Date.now()}`;
+    createdUsers.push(id); // registered before any insert
+    return id;
+  };
+
+  afterEach(async () => {
+    if (!dbConnected) return;
+    while (createdUsers.length) {
+      await query('DELETE FROM users WHERE id = $1', [createdUsers.pop()]);
+    }
+  });
 
   beforeAll(async () => {
     dbConnected = await checkDatabaseConnection();
@@ -29,7 +43,7 @@ describe('Strict PostgreSQL Live Database Verification Suite', () => {
       throw new Error('PostgreSQL connection failed. Persistence test cannot execute without live PostgreSQL.');
     }
 
-    const testUserId = `pg_user_${Date.now()}`;
+    const testUserId = newTestUser('pg_user');
     await query('INSERT INTO users (id, name) VALUES ($1, $2)', [testUserId, 'Persistence Test User']);
     await query('INSERT INTO pots (user_id, pot_type, amount) VALUES ($1, $2, $3)', [testUserId, 'bank', 5000]);
 
@@ -46,8 +60,6 @@ describe('Strict PostgreSQL Live Database Verification Suite', () => {
     const state = await getFinancialState(testUserId);
     expect(state.pots.bank).toBe(6000);
 
-    // Cleanup
-    await query('DELETE FROM users WHERE id = $1', [testUserId]);
   });
 
   it('3. PostgreSQL Atomic Rollback on Failure', async () => {
@@ -55,7 +67,7 @@ describe('Strict PostgreSQL Live Database Verification Suite', () => {
       throw new Error('PostgreSQL connection failed. Rollback test cannot execute without live PostgreSQL.');
     }
 
-    const testUserId = `rollback_user_${Date.now()}`;
+    const testUserId = newTestUser('rollback_user');
     await query('INSERT INTO users (id, name) VALUES ($1, $2)', [testUserId, 'Rollback User']);
     await query('INSERT INTO pots (user_id, pot_type, amount) VALUES ($1, $2, $3)', [testUserId, 'cash', 2000]);
 
@@ -74,8 +86,6 @@ describe('Strict PostgreSQL Live Database Verification Suite', () => {
     const res = await query('SELECT amount FROM pots WHERE user_id = $1 AND pot_type = $2', [testUserId, 'cash']);
     expect(Number(res.rows[0].amount)).toBe(2000); // Rolled back!
 
-    // Cleanup
-    await query('DELETE FROM users WHERE id = $1', [testUserId]);
   });
 
   it('4. Real PostgreSQL Concurrency & Thread-Safety', async () => {
@@ -83,7 +93,7 @@ describe('Strict PostgreSQL Live Database Verification Suite', () => {
       throw new Error('PostgreSQL connection failed. Concurrency test cannot execute without live PostgreSQL.');
     }
 
-    const testUserId = `concurrent_user_${Date.now()}`;
+    const testUserId = newTestUser('concurrent_user');
     await query('INSERT INTO users (id, name) VALUES ($1, $2)', [testUserId, 'Concurrent User']);
     await query('INSERT INTO pots (user_id, pot_type, amount) VALUES ($1, $2, $3)', [testUserId, 'bank', 5000]);
 
@@ -106,8 +116,6 @@ describe('Strict PostgreSQL Live Database Verification Suite', () => {
     const res = await query('SELECT amount FROM pots WHERE user_id = $1 AND pot_type = $2', [testUserId, 'bank']);
     expect(Number(res.rows[0].amount)).toBe(6000); // 5000 + 10 * 100 = 6000
 
-    // Cleanup
-    await query('DELETE FROM users WHERE id = $1', [testUserId]);
   });
 
   it('5. Real PostgreSQL SQL Injection Safety', async () => {

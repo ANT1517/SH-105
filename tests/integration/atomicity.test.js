@@ -21,6 +21,8 @@ const { clearAuditLogs } = require('../../src/services/auditLogger');
 
 // Unique isolated user for each test run to avoid cross-test contamination
 const TEST_USER = `atomic_test_${Date.now()}`;
+// Extra users created by individual tests (e.g. test C's ghost_user_*); deleted in afterAll even if a test fails.
+const extraTestUsers = [];
 
 const VALID_TX = (suffix = '') => ({
   user_id: TEST_USER,
@@ -47,9 +49,11 @@ describe('Transaction Atomicity Suite', () => {
   });
 
   afterAll(async () => {
-    // Clean up isolated test user
+    // Clean up isolated test users (FK ON DELETE CASCADE removes their pots/transactions/audit rows)
     if (dbConnected) {
-      await query('DELETE FROM users WHERE id = $1', [TEST_USER]);
+      for (const id of [TEST_USER, ...extraTestUsers]) {
+        await query('DELETE FROM users WHERE id = $1', [id]);
+      }
     }
     try { await pool.end(); } catch (_) {}
   });
@@ -150,6 +154,7 @@ describe('Transaction Atomicity Suite', () => {
     // The FK constraint on transactions.user_id → users.id will cause the INSERT to fail,
     // which triggers a ROLLBACK. The route must return 500, never 201.
     const nonExistentUser = `ghost_user_${Date.now()}`;
+    extraTestUsers.push(nonExistentUser); // registered before the request so cleanup runs on failure too
     const res = await request(app).post('/api/transactions').send({
       user_id: nonExistentUser,
       channel: 'whatsapp_voice',
