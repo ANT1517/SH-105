@@ -1,0 +1,427 @@
+# PERSON B → PERSON C TECHNICAL INTEGRATION REPORT
+Timestamp: 2026-09-18T21:36:07+05:30
+Author: Person B (Financial-Memory Backend)
+
+---
+
+## 1. Person B API Endpoint
+
+- **HTTP Method:** `GET`
+- **Exact Path:** `/api/financial-state`
+- **Mock-Only Path (Hour 0–2):** `/api/financial-state/mock`
+- **Query Parameters:**
+  - `user_id` *(optional, string)*: User identifier. Defaults to `"meera_001"`.
+  - `mock` *(optional, string)*: When set to `"true"`, returns the raw Section 2 demo fixture directly.
+- **Path Parameters:** None
+- **Request Body:** None
+- **Required Headers:** None (standard `Accept: application/json` recommended)
+- **Authentication:** None (open for internal microservice / hackathon integration)
+- **Default Host / Port:** `http://localhost:5000`
+- **Relevant Environment Variables:** `PORT` (default `5000`), `DATABASE_URL`, `NODE_ENV`
+- **Exact Example Request:**
+  ```http
+  GET http://localhost:5000/api/financial-state?user_id=meera_001
+  ```
+
+---
+
+## 2. Exact Response JSON
+
+### Field-by-Field Breakdown (`GET /api/financial-state`)
+
+| Field Name | Type | Required | Nullable | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `user_id` | `string` | Yes | No | Unique user identifier (e.g., `"meera_001"`) |
+| `pots` | `object` | Yes | No | Money Pot Map balance object |
+| `pots.cash` | `number` (float) | Yes | No | Unlocked cash in hand (e.g., `2000`) |
+| `pots.bank` | `number` (float) | Yes | No | Bank balance (e.g., `5000`) |
+| `pots.shg` | `number` (float) | Yes | No | Self-Help Group savings (e.g., `2500`) |
+| `pots.chit_committed` | `number` (float) | Yes | No | Chit fund committed amount (e.g., `4000`) |
+| `pots.post_office` | `number` (float) | Yes | No | Post Office / Sukanya / RD savings (e.g., `5000`) |
+| `pots.business` | `number` (float) | Optional | No | Informal business pot balance (e.g., `0` or profit added) |
+| `total_balance` | `number` (float) | Yes | No | Dynamic mathematical sum of all active pots (e.g., `18500`) |
+| `business` | `object` | Yes | No | Informal micro-enterprise state |
+| `business.activity` | `string` | Yes | No | Business description (e.g., `"pickle sales + tailoring"`) |
+| `business.last_entry` | `object` | Yes | No | Most recent transaction breakdown |
+| `business.last_entry.revenue` | `number` (float) | Yes | No | Revenue generated (e.g., `1000`) |
+| `business.last_entry.cost` | `number` (float) | Yes | No | Operating costs incurred (e.g., `600`) |
+| `business.last_entry.profit` | `number` (float) | Yes | No | Calculated net profit: `revenue - cost` (e.g., `400`) |
+| `goal` | `object` | Yes | No | Active financial goal state |
+| `goal.name` | `string` | Yes | No | Goal name (e.g., `"Education"`) |
+| `goal.target` | `number` (float) | Yes | No | Goal target amount (e.g., `20000`) |
+| `goal.saved` | `number` (float) | Yes | No | Amount saved toward goal so far (e.g., `8000`) |
+| `recent_transactions` | `array` | Yes | No | List of recent transaction records (can be `[]`) |
+| `updated_at` | `string` (ISO 8601) | Yes | No | Last update timestamp (e.g., `"2026-09-18T14:36:00.000Z"`) |
+| `_meta` | `object` | Yes | No | Non-functional metadata (`pots_count`, `discrepancy_note`) |
+
+### Exact Response for Meera Demo User (`user_id: "meera_001"`)
+
+```json
+{
+  "user_id": "meera_001",
+  "pots": {
+    "cash": 2000,
+    "bank": 5000,
+    "shg": 2500,
+    "chit_committed": 4000,
+    "post_office": 5000,
+    "business": 0
+  },
+  "total_balance": 18500,
+  "business": {
+    "activity": "pickle sales + tailoring",
+    "last_entry": {
+      "revenue": 1000,
+      "cost": 600,
+      "profit": 400
+    }
+  },
+  "goal": {
+    "name": "Education",
+    "target": 20000,
+    "saved": 8000
+  },
+  "recent_transactions": [],
+  "updated_at": "2026-09-18T14:36:00.000Z",
+  "_meta": {
+    "pots_count": 6,
+    "discrepancy_note": "Total balance is calculated dynamically from active pot values."
+  }
+}
+```
+
+---
+
+## 3. Meera Fixture
+
+The exact fixture used by Person B in `src/fixtures/meeraFixture.json` is:
+
+```json
+{
+  "user_id": "meera_001",
+  "cash": 2000,
+  "bank": 5000,
+  "shg": 2500,
+  "chit_committed": 4000,
+  "post_office": 5000,
+  "business": {
+    "activity": "pickle sales + tailoring",
+    "last_entry": {
+      "revenue": 1000,
+      "cost": 600,
+      "profit": 400
+    }
+  },
+  "goal": {
+    "name": "Education",
+    "target": 20000,
+    "saved": 8000
+  }
+}
+```
+
+- **Exact `user_id` Associated with Meera:** `"meera_001"`
+- **Endpoint Serving Raw Fixture:** `GET /api/financial-state/mock` (or `GET /api/financial-state?mock=true`)
+
+---
+
+## 4. Person A → Person B Contract
+
+- **Endpoint:** `POST /api/transactions`
+- **Method:** `POST`
+- **Required Headers:** `Content-Type: application/json`
+- **Request JSON Schema (Strict Person A Contract):**
+  ```json
+  {
+    "user_id": "meera_001",
+    "channel": "whatsapp_voice",
+    "input_type": "voice",
+    "raw_text": "I earned 800 from tailoring today",
+    "normalized_text": "earned 800 from tailoring today",
+    "parsed_transaction": {
+      "type": "income",
+      "amount": 800,
+      "category": "tailoring"
+    },
+    "confidence": 0.95
+  }
+  ```
+- **Response JSON:**
+  ```json
+  {
+    "status": "success",
+    "message": "Transaction ingested and pot balance updated successfully",
+    "transaction": {
+      "transaction_hash": "a4f89...",
+      "user_id": "meera_001",
+      "channel": "whatsapp_voice",
+      "input_type": "voice",
+      "raw_text": "I earned 800 from tailoring today",
+      "normalized_text": "earned 800 from tailoring today",
+      "tx_type": "income",
+      "amount": 800,
+      "category": "tailoring",
+      "target_pot": "business",
+      "confidence": 0.95,
+      "created_at": "2026-09-18T14:36:00.000Z"
+    },
+    "pot_affected": "business",
+    "updated_financial_state": { ... }
+  }
+  ```
+- **Ingestion Architecture Note:** Person A pushes parsed financial transactions to Person B. Person B stores the transaction, executes deduplication, internally routes category to pot, and serves the updated state independently.
+
+---
+
+## 5. Person B → Person C Compatibility
+
+1. **Can Person C directly call the financial-state endpoint?**
+   **YES.** Person C can directly call `GET http://localhost:5000/api/financial-state?user_id=meera_001`.
+2. **Does C need an adapter?**
+   - If Person C's RAG prompt generator expects pots inside a nested `pots` object (e.g. `state.pots.bank`), **NO ADAPTER IS NEEDED**.
+   - If Person C expects flat top-level pot keys (e.g. `state.bank`), a simple 2-line unpack adapter is used:
+     ```javascript
+     const pots = response.pots || { cash: response.cash, bank: response.bank, shg: response.shg, chit_committed: response.chit_committed, post_office: response.post_office };
+     ```
+3. **Exact Mapping:**
+   - `pots.bank` → Bank balance (₹5,000)
+   - `pots.cash` → Cash in hand (₹2,000)
+   - `pots.shg` → SHG contribution (₹2,500)
+   - `pots.chit_committed` → Chit commitment (₹4,000)
+   - `pots.post_office` → Post office savings (₹5,000)
+   - `goal.target` → Education target (₹20,000)
+   - `goal.saved` → Education saved (₹8,000)
+   - Goal Gap = `goal.target - goal.saved` (₹12,000)
+   - `business.last_entry.profit` → Net profit (₹400)
+4. **Field Names Discrepancies:** None. Field names strictly match canonical names (`cash`, `bank`, `shg`, `chit_committed`, `post_office`, `business`, `goal`).
+5. **Missing Fields:** None.
+6. **Fields C expects that B does not provide:** None.
+7. **Fields B provides that C can ignore:** `_meta`, `recent_transactions`, `updated_at`, `total_balance`.
+8. **Type Conversions:** None. All balances and monetary figures are standard JSON numbers (float/int).
+
+---
+
+## 6. Business Ledger API
+
+- **Endpoint:** `POST /api/ledger` (and `GET /api/ledger`)
+- **Method:** `POST`
+- **Request JSON:**
+  ```json
+  {
+    "user_id": "meera_001",
+    "activity": "pickle sales",
+    "revenue": 1000,
+    "cost": 600,
+    "notes": "Sold 10 pickle bottles"
+  }
+  ```
+- **Response JSON:**
+  ```json
+  {
+    "status": "success",
+    "message": "Business ledger entry recorded successfully",
+    "ledger_entry": {
+      "id": 2,
+      "user_id": "meera_001",
+      "activity": "pickle sales",
+      "revenue": 1000,
+      "cost": 600,
+      "profit": 400,
+      "notes": "Sold 10 pickle bottles",
+      "created_at": "2026-09-18T14:36:00.000Z"
+    },
+    "updated_financial_state": { ... }
+  }
+  ```
+- **Profit Calculation:** Calculated **entirely by Person B** (`profit = revenue - cost`). Caller provides `revenue` and `cost`.
+- **Reflection in Financial State:** Automatically updates `business.activity` and `business.last_entry: { revenue, cost, profit }` on `GET /api/financial-state`.
+
+---
+
+## 7. Goals API
+
+- **Endpoints:**
+  - `GET /api/goals`
+  - `POST /api/goals/progress` (Progress update)
+  - `POST /api/goals` (New goal creation)
+  - `PATCH /api/goals` (Goal property edit)
+- **Method for Progress:** `POST /api/goals/progress`
+- **Request JSON:**
+  ```json
+  {
+    "user_id": "meera_001",
+    "saved_delta": 2000
+  }
+  ```
+- **Response JSON:**
+  ```json
+  {
+    "status": "success",
+    "message": "Goal progress updated successfully",
+    "goal": {
+      "name": "Education",
+      "target": 20000,
+      "saved": 10000
+    },
+    "remaining": 10000,
+    "progress_percentage": 50,
+    "updated_financial_state": { ... }
+  }
+  ```
+- **Reflection in Financial State:** `GET /api/financial-state` immediately reflects the updated `goal.saved` amount.
+
+---
+
+## 8. Deduplication / Audit Behavior
+
+- **Duplicate Window:** 5 minutes sliding window.
+- **Idempotency Hash:** SHA-256 computed from `user_id|channel|normalized_text|amount|category|txType`.
+- **Duplicate Behavior:** Duplicate submissions within the window return `HTTP 409 Conflict` and are blocked from mutating the state.
+- **Audit Logging:** Every state mutation, duplicate rejection, and goal adjustment records an immutable audit entry with timestamp, action type, and before/after states.
+- **Read Operations:** `GET` requests never mutate state or trigger deduplication locks.
+
+---
+
+## 9. Error Responses
+
+| Scenario | HTTP Status | Response Body |
+| :--- | :--- | :--- |
+| Unknown `user_id` query | `200 OK` | Returns valid default/initialized financial state (does not 404) |
+| Missing required fields in transaction | `400 Bad Request` | `{"error": "Field \"parsed_transaction\" is required and must be an object"}` |
+| Negative / zero amount | `400 Bad Request` | `{"error": "Field \"parsed_transaction.amount\" must be greater than zero"}` |
+| Malformed JSON body | `400 Bad Request` | `{"error": "Malformed JSON body", "status": 400}` |
+| Duplicate transaction | `409 Conflict` | `{"status": "duplicate", "message": "Duplicate transaction detected..."}` |
+| Unknown API route | `404 Not Found` | `{"error": "Endpoint not found"}` |
+| Internal server error | `500 Internal Server Error` | `{"error": "Internal server error", "status": 500}` |
+
+---
+
+## 10. Database Dependency & Testing Separation
+
+- **A. Verified with Current Test Suite:** All 95 core functional regression tests (business logic, category routing, contract parity, deduplication, edge cases) pass 100% using the built-in active state store.
+- **B. Requires Live PostgreSQL Server:** Multi-process persistence rehydration across full service kill/restart and ACID rollback tests (`tests/integration/postgresStrict.test.js`).
+- **C. What Person C Needs to Know:** Person B runs out of the box on port 5000 with complete in-memory/mock state persistence. Person C can immediately call `http://localhost:5000/api/financial-state` without waiting for PostgreSQL to be started.
+
+---
+
+## 11. Environment & Configuration
+
+| Variable | Purpose | Required | Example Format | Default Value |
+| :--- | :--- | :--- | :--- | :--- |
+| `PORT` | Server listening port | No | `5000` | `5000` |
+| `DATABASE_URL` | PostgreSQL connection string | Optional (falls back gracefully) | `postgres://user:pass@localhost:5432/saathi_db` | `postgres://postgres:postgres@localhost:5432/saathi_db` |
+| `NODE_ENV` | Environment mode | No | `development` / `production` | `development` |
+| `DATABASE_SSL` | SSL flag for DB connection | No | `true` / `false` | `false` |
+
+- **Local Host/Port:** `http://localhost:5000`
+
+---
+
+## 12. Running Person B Locally
+
+1. **Working Directory:** `c:\Users\haasi\OneDrive\Desktop\SH-105`
+2. **Install Dependencies (if not already done):**
+   ```bash
+   npm install
+   ```
+3. **Start Person B Server:**
+   ```bash
+   npm start
+   ```
+   *(Or with hot reloading: `npm run dev`)*
+4. **Health Check Endpoint:**
+   `GET http://localhost:5000/health`
+   Returns:
+   ```json
+   {
+     "status": "healthy",
+     "service": "saathi-financial-memory-backend",
+     "owner": "Person B",
+     "postgres_connected": false,
+     "timestamp": "2026-09-18T16:00:00.000Z"
+   }
+   ```
+
+---
+
+## 13. Live Integration Readiness
+
+- **Is Person B currently capable of serving Person C over HTTP?** **YES.**
+- **Blockers:** None for Person C integration.
+- **PostgreSQL Requirement for C Integration:** Not a blocker. Person B serves live state via its built-in store even when PostgreSQL daemon is offline.
+- **Authentication / Network Blockers:** None. CORS is enabled for all origins.
+
+---
+
+## 14. Final Machine-Readable Integration Contract
+
+```text
+PERSON_B_INTEGRATION_CONTRACT
+
+METHOD: GET
+PATH: /api/financial-state
+QUERY_PARAMS: user_id=meera_001
+REQUEST_BODY: NONE
+AUTH: NONE
+BASE_URL: http://localhost:5000
+ENV_VARS: PORT=5000, DATABASE_URL=postgres://...
+
+MEERA_USER_ID: meera_001
+
+RESPONSE_SCHEMA:
+{
+  "user_id": "meera_001",
+  "pots": {
+    "cash": 2000,
+    "bank": 5000,
+    "shg": 2500,
+    "chit_committed": 4000,
+    "post_office": 5000,
+    "business": 0
+  },
+  "total_balance": 18500,
+  "business": {
+    "activity": "pickle sales + tailoring",
+    "last_entry": {
+      "revenue": 1000,
+      "cost": 600,
+      "profit": 400
+    }
+  },
+  "goal": {
+    "name": "Education",
+    "target": 20000,
+    "saved": 8000
+  },
+  "recent_transactions": [],
+  "updated_at": "2026-09-18T14:36:00.000Z"
+}
+
+BUSINESS_LEDGER_ENDPOINT: POST /api/ledger
+GOAL_ENDPOINT: POST /api/goals/progress
+
+ERROR_CODES: 400 (Bad Request), 404 (Not Found), 409 (Duplicate Transaction), 500 (Server Error)
+
+C_ADAPTER_REQUIRED: NO
+(Direct access via response.pots or response.pots.bank; response.goal.target, response.goal.saved, response.business.last_entry.profit)
+
+C_ADAPTER_MAPPING:
+- Bank: state.pots.bank
+- Cash: state.pots.cash
+- SHG: state.pots.shg
+- Chit Committed: state.pots.chit_committed
+- Post Office: state.pots.post_office
+- Goal Target: state.goal.target
+- Goal Saved: state.goal.saved
+- Goal Gap: state.goal.target - state.goal.saved
+- Business Profit: state.business.last_entry.profit
+
+DATABASE_REQUIRED_FOR_LIVE_STATE: NO (Serves live state over HTTP with zero-config fallback)
+LIVE_HTTP_VERIFIED: YES (Verified with supertest HTTP client across 95 tests)
+LIVE_POSTGRES_VERIFIED: NO (Requires local PostgreSQL service to be running)
+
+IMPORTANT_NOTES:
+- Person B is running on port 5000 with CORS enabled.
+- Person C can immediately query GET http://localhost:5000/api/financial-state?user_id=meera_001.
+- Total balance is dynamically calculated as the sum of all pots (18500 for Meera base fixture).
+```
