@@ -31,8 +31,9 @@ def detect_signals(message: str) -> List[SafetySignal]:
     if not normalized:
         return signals
 
-    # 1. KYC / Account Expiry
-    if re.search(r'\b(kyc|account|card)\b.*\b(expire|expired|suspended|block|blocked|verify)\b', normalized):
+    # 1. KYC / Account Expiry (also the reversed order "verify/update your KYC", tied to "your" so that
+    #    questions like "how do I verify my KYC?" are not flagged)
+    if re.search(r'\b(kyc|account|card)\b.*\b(expire|expired|suspended|block|blocked|verify)\b|\b(verify|update|renew|complete)\b.{0,15}\byour\b.{0,10}\b(kyc|account|card)\b', normalized):
         signals.append(SafetySignal(
             category="urgency",
             description="Urgent request regarding KYC or account status.",

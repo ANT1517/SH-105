@@ -9,8 +9,9 @@ logger = logging.getLogger("interaction")
 # produces ANY safety signal there is routed to Person C's /api/v1/safety/check instead of guidance.
 # Kept as a copy (services stay independent); tests/test_person_c_routing.py fails if rules.py drifts.
 # Regenerate by copying the re.search(r'...') patterns from rules.py in order.
+# Regenerate by copying the re.search(r'...') patterns from rules.py in order.
 SAFETY_TRIGGER_PATTERNS = [
-    r'\b(kyc|account|card)\b.*\b(expire|expired|suspended|block|blocked|verify)\b',  # KYC / account expiry
+    r'\b(kyc|account|card)\b.*\b(expire|expired|suspended|block|blocked|verify)\b|\b(verify|update|renew|complete)\b.{0,15}\byour\b.{0,10}\b(kyc|account|card)\b',  # KYC / account expiry
     r'\bclick\b|\b(tap|visit|go to)\b.*\b(link|url|website|site|here|below)\b|\bwww\.',  # click-link requests (click/URLs broad; tap/visit/go to need a link context)
     r'\b(otp|one time password)\b|\b(verification|security|confirmation|secret|login|authentication) code\b|\bcode\b.*\b(received|sent to your)\b',  # OTP requests (bare 'code' is not enough)
     r'\b(share|send|enter|provide|reveal|give|tell)\b.{0,15}\byour\b.{0,15}\b(password|pin|mpin|cvv)\b|\b(password|pin|mpin|cvv)\b.{0,40}\b(required|needed|to verify|to confirm|to activate|to unlock)\b',  # credential requests (needs 'your' PIN/password, not a question about them)

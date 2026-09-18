@@ -1,5 +1,5 @@
 {
-  "_comment": "Shared by person_c/tests/test_phase9_safety_precision.py and services/interaction/tests/test_person_c_routing.py so Person C's rules.py and Dev-A's mirrored trigger copy are judged on the same examples. 'safe' = ordinary messages a user might send Saathi (must NOT be flagged); 'scam' = genuine scam-style messages (must stay flagged).",
+  "_comment": "Shared by person_c/tests/test_phase9_safety_precision.py and services/interaction/tests/test_person_c_routing.py so Person C's rules.py and Dev-A's mirrored trigger copy are judged on the same examples. 'safe' = ordinary messages a user might send Saathi (must NOT be flagged); 'scam' = genuine scam-style messages (must stay flagged). Ordinary transaction messages (earned/spent/saved/sold/paid) are in 'safe' too: they must reach Person B, not be caught by the safety rules.",
   "safe": [
     "is it fine to take a loan?",
     "should I go to the bank for a loan?",
@@ -30,7 +30,16 @@
     "can I take a loan against my chit?",
     "what is a good app for tracking my expenses?",
     "hello",
-    "thanks"
+    "thanks",
+    "how do I verify my KYC?",
+    "I need to update my KYC at the bank, what documents do I need?",
+    "I earned 800 from tailoring today",
+    "I spent 300 on electricity",
+    "I saved 1000 today",
+    "I sold 10 pickle bottles for 1000",
+    "paid the chit installment 4000",
+    "I paid 500 for vegetables",
+    "I got 1200 from stitching"
   ],
   "scam": [
     "Your KYC will expire, click to verify",
@@ -54,6 +63,8 @@
     "Tap the link below to update your bank details",
     "Share the verification code sent to your phone with the caller",
     "Your account will be blocked. Send your CVV to verify",
-    "Pay the penalty immediately, court notice issued"
+    "Pay the penalty immediately, court notice issued",
+    "paid 500 to verify your KYC now",
+    "Update your KYC today or your SIM will be blocked"
   ]
 }

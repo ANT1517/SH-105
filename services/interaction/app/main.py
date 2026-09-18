@@ -9,7 +9,7 @@ from .media import download_twilio_media
 from .transcription import transcribe_audio
 from .transaction_parser import parse_transaction, normalize_text
 from .person_b import forward_to_person_b
-from .person_c import ask_person_c
+from .person_c import ask_person_c, looks_suspicious
 from dotenv import load_dotenv
 
 # Configure logging
@@ -60,6 +60,22 @@ def get_normalized_input():
         raise HTTPException(status_code=500, detail=f"Fixture not found at {fixture_path}")
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="Fixture contains invalid JSON")
+
+async def route_message(normalized: dict) -> tuple[str, bool]:
+    """Decide who handles a normalized message. Returns (reply_text, was_recorded_as_transaction).
+
+    Order matters: the safety check runs FIRST. A message that trips the safety trigger goes to Person C's
+    /api/v1/safety/check and is never forwarded to Person B, even if it also parses as a valid transaction
+    ("paid 500 to verify your KYC now" must not be recorded as an expense). Then transactions go to Person B;
+    anything else (questions) goes to Person C guidance.
+    """
+    if looks_suspicious(normalized["raw_text"]):
+        return await ask_person_c(normalized), False
+    recorded = await forward_to_person_b(normalized)
+    if recorded:
+        return recorded, True
+    return await ask_person_c(normalized), False
+
 
 @app.post("/webhooks/whatsapp")
 async def webhook_whatsapp(request: Request):
@@ -118,10 +134,8 @@ async def webhook_whatsapp(request: Request):
             }
             logger.info(f"Normalized Input: {json.dumps(normalized)}")
             
-            recorded = await forward_to_person_b(normalized)
-            # Not a transaction: it's a question or a suspicious message, so Person C answers it.
-            answer = None if recorded else await ask_person_c(normalized)
-            response.message(f"I heard: {transcript}\n{recorded or answer}")
+            reply, _ = await route_message(normalized)
+            response.message(f"I heard: {transcript}\n{reply}")
             
         except httpx.HTTPError:
             response.message("I couldn't download your voice message. Please try again.")
@@ -152,11 +166,7 @@ async def webhook_whatsapp(request: Request):
         }
         logger.info(f"Normalized Input: {json.dumps(normalized)}")
         
-        recorded = await forward_to_person_b(normalized)
-        if recorded:
-            response.message(f"Saathi received: {Body}\n{recorded}")
-        else:
-            # Not a transaction: it's a question or a suspicious message, so Person C answers it.
-            response.message(await ask_person_c(normalized))
+        reply, was_recorded = await route_message(normalized)
+        response.message(f"Saathi received: {Body}\n{reply}" if was_recorded else reply)
 
     return Response(content=str(response), media_type="application/xml")
