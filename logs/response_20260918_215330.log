@@ -1,0 +1,11 @@
+# ENVIRONMENT FILE BEST PRACTICES EXPLANATION
+Timestamp: 2026-09-18T21:53:30+05:30
+
+## Overview
+- **Question:** Is it okay to have `.env.example` on the repository?
+- **Answer:** YES, having `.env.example` in the repository is standard industry best practice.
+
+## Key Points
+1. **Template Purpose:** `.env.example` serves as a blueprint for teammates (Person A, C, D) so they know which environment variables exist (`PORT`, `DATABASE_URL`, `NODE_ENV`).
+2. **Zero Secrets:** `.env.example` only contains generic local development placeholders (`localhost:5432`).
+3. **Protected `.env`:** The actual `.env` file containing local/private configurations is strictly ignored by `.gitignore` and was NOT pushed.

@@ -1,0 +1,9 @@
+# ENV VS ENV.EXAMPLE CONTENT EXPLANATION
+Timestamp: 2026-09-18T21:55:30+05:30
+
+## Overview
+- **User Query:** Why do `.env` and `.env.example` currently have the same content?
+- **Explanation:**
+  1. `.env` currently uses the default local development fallback (`localhost:5432/saathi_db`) because real cloud credentials (such as Supabase, Neon, or AWS RDS) haven't been configured yet.
+  2. When real credentials or production passwords are provided, they will go ONLY into `.env`, while `.env.example` will remain generic.
+  3. We can make `.env.example` use explicit placeholders (e.g., `postgres://username:password@localhost:5432/db_name`) to make the distinction even clearer if desired.
