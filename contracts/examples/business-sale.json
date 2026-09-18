@@ -1,0 +1,13 @@
+{
+  "user_id": "meera_001",
+  "channel": "whatsapp",
+  "input_type": "voice",
+  "raw_text": "I sold 10 pickle bottles for 1000.",
+  "normalized_text": "I sold 10 pickle bottles for 1000.",
+  "parsed_transaction": {
+    "type": "business",
+    "amount": 1000,
+    "category": "pickle_sales"
+  },
+  "confidence": 0.94
+}
