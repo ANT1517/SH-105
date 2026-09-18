@@ -29,4 +29,17 @@ function resolveUserId(id) {
   return { error: `Unknown phone number "${id}": no user is mapped to it (set PHONE_USER_MAP)` };
 }
 
-module.exports = { resolveUserId, normalizePhone };
+/**
+ * Route helper: returns the resolved user id, or sends 404 unknown_user (unmapped phone number) and returns null.
+ * Callers must `return` when it returns null. Never creates a user.
+ */
+function resolveOrReject(res, rawId) {
+  const resolved = resolveUserId(String(rawId).trim());
+  if (resolved.error) {
+    res.status(404).json({ error: 'unknown_user', message: resolved.error });
+    return null;
+  }
+  return resolved.userId;
+}
+
+module.exports = { resolveUserId, resolveOrReject, normalizePhone };

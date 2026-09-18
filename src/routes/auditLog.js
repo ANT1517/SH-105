@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getAuditLogs, logEvent } = require('../services/auditLogger');
 const { getFinancialState } = require('../services/financialStateStore');
+const { resolveUserId, resolveOrReject } = require('../services/userResolver');
 
 // Actions external services (Person C) may record. Person B's own actions (TRANSACTION_INGESTED,
 // STATE_READ, GOAL_UPDATED, ...) are deliberately NOT accepted here so the HTTP API can't forge them.
@@ -15,7 +16,8 @@ const isNonEmptyString = (v) => typeof v === 'string' && v.trim() !== '';
  */
 router.get('/', async (req, res) => {
   try {
-    const userId = req.query.user_id || 'meera_001';
+    const userId = resolveOrReject(res, req.query.user_id || 'meera_001');
+    if (!userId) return;
     const limit = Number(req.query.limit) || 50;
     const logs = await getAuditLogs(userId, limit);
 
@@ -55,7 +57,13 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Field "metadata" must be a JSON object' });
     }
 
-    const userId = user_id.trim();
+    // Same phone -> user resolution as POST /api/transactions and GET /api/financial-state.
+    // Unmapped phone numbers are an unknown user (404); no user is ever created here.
+    const resolved = resolveUserId(user_id.trim());
+    if (resolved.error) {
+      return res.status(404).json({ error: 'unknown_user', message: resolved.error });
+    }
+    const userId = resolved.userId;
     // Same rule as GET /api/financial-state: unknown users are surfaced, not silently attributed to someone else
     // (and the audit_logs FK would otherwise drop the row while still reporting success).
     if (!(await getFinancialState(userId))) {

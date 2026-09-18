@@ -10,6 +10,7 @@ const {
 } = require('../services/financialStateStore');
 const { logEvent, syncAuditLogToMemory } = require('../services/auditLogger');
 const { executeTransaction, isConnected } = require('../db/db');
+const { resolveOrReject } = require('../services/userResolver');
 
 /**
  * GET /api/goals
@@ -18,7 +19,8 @@ const { executeTransaction, isConnected } = require('../db/db');
  */
 router.get('/', async (req, res) => {
   try {
-    const userId = req.query.user_id || 'meera_001';
+    const userId = resolveOrReject(res, req.query.user_id || 'meera_001');
+    if (!userId) return;
     const goal = await getActiveGoal(userId);
     const target = Number(goal.target) || 0;
     const saved = Number(goal.saved) || 0;
@@ -72,7 +74,9 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'saved_amount must be a non-negative finite number' });
     }
 
-    const trimmedUserId = user_id ? user_id.trim() : 'meera_001';
+    // Phone-number ids resolve via PHONE_USER_MAP; unmapped ones are rejected (404) instead of auto-creating a user.
+    const trimmedUserId = resolveOrReject(res, user_id ? user_id.trim() : 'meera_001');
+    if (!trimmedUserId) return;
     const trimmedName = name.trim();
     const previousGoal = { ...activeUserState.goal };
 
@@ -170,7 +174,9 @@ router.post('/progress', async (req, res) => {
       return res.status(400).json({ error: 'target_amount must be a positive finite number if provided' });
     }
 
-    const trimmedUserId = user_id ? user_id.trim() : 'meera_001';
+    // Phone-number ids resolve via PHONE_USER_MAP; unmapped ones are rejected (404) instead of auto-creating a user.
+    const trimmedUserId = resolveOrReject(res, user_id ? user_id.trim() : 'meera_001');
+    if (!trimmedUserId) return;
     const previousGoal = { ...activeUserState.goal };
 
     let updatedGoal = null;
@@ -296,7 +302,9 @@ router.patch('/:id?', async (req, res) => {
       return res.status(400).json({ error: 'Goal name must be a non-empty string' });
     }
 
-    const trimmedUserId = user_id ? user_id.trim() : 'meera_001';
+    // Phone-number ids resolve via PHONE_USER_MAP; unmapped ones are rejected (404) instead of auto-creating a user.
+    const trimmedUserId = resolveOrReject(res, user_id ? user_id.trim() : 'meera_001');
+    if (!trimmedUserId) return;
     const currentGoal = await getActiveGoal(trimmedUserId);
     const newName = name !== undefined ? name.trim() : currentGoal.name;
     const newTarget = target_amount !== undefined ? Number(target_amount) : currentGoal.target;

@@ -3,6 +3,7 @@ const router = express.Router();
 const meeraFixture = require('../fixtures/meeraFixture.json');
 const { getFinancialState } = require('../services/financialStateStore');
 const { logEvent } = require('../services/auditLogger');
+const { resolveUserId } = require('../services/userResolver');
 
 /**
  * GET /api/financial-state/mock
@@ -18,7 +19,13 @@ router.get('/mock', (req, res) => {
  */
 router.get('/', async (req, res) => {
   try {
-    const userId = req.query.user_id || 'meera_001';
+    // Twilio/WhatsApp callers send "whatsapp:+91..."; resolve mapped phone numbers to their user (PHONE_USER_MAP).
+    // Unmapped phone numbers are an unknown user (404). Nothing here ever creates a user.
+    const resolved = resolveUserId(String(req.query.user_id || 'meera_001').trim());
+    if (resolved.error) {
+      return res.status(404).json({ error: 'unknown_user', message: resolved.error });
+    }
+    const userId = resolved.userId;
     
     // If explicit mock requested
     if (req.query.mock === 'true') {

@@ -3,6 +3,7 @@ const router = express.Router();
 const { addLedgerEntry, getLedgerEntries, getFinancialState, syncLedgerMemory } = require('../services/financialStateStore');
 const { logEvent, syncAuditLogToMemory } = require('../services/auditLogger');
 const { executeTransaction, isConnected } = require('../db/db');
+const { resolveOrReject } = require('../services/userResolver');
 
 /**
  * POST /api/ledger
@@ -58,7 +59,9 @@ router.post('/', async (req, res) => {
       }
     }
 
-    const trimmedUserId = String(user_id || 'meera_001').trim();
+    // Phone-number ids resolve via PHONE_USER_MAP; unmapped ones are rejected (404) instead of auto-creating a user.
+    const trimmedUserId = resolveOrReject(res, user_id || 'meera_001');
+    if (!trimmedUserId) return;
     const trimmedActivity = String(activity || 'pickle sales + tailoring').trim();
     const profit = rev - cst;
     const createdAt = new Date().toISOString();
@@ -162,7 +165,8 @@ router.post('/', async (req, res) => {
  */
 router.get('/', async (req, res) => {
   try {
-    const userId = req.query.user_id || 'meera_001';
+    const userId = resolveOrReject(res, req.query.user_id || 'meera_001');
+    if (!userId) return;
     const entries = await getLedgerEntries(userId);
     return res.status(200).json({
       user_id: userId,
