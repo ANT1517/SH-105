@@ -49,7 +49,8 @@ async function logEvent({
         auditEntry.created_at
       ]
     );
-    inMemoryAuditLogs.unshift(auditEntry);
+    // DO NOT push to inMemoryAuditLogs here if using a client.
+    // The caller must call syncAuditLogToMemory() after the transaction commits successfully.
   } else {
     inMemoryAuditLogs.unshift(auditEntry);
 
@@ -90,6 +91,16 @@ function removeAuditLogByEntityId(entityId) {
 }
 
 /**
+ * Synchronously pushes an audit log entry to memory.
+ * Used after an atomic database transaction successfully commits.
+ */
+function syncAuditLogToMemory(auditEntry) {
+  if (auditEntry) {
+    inMemoryAuditLogs.unshift(auditEntry);
+  }
+}
+
+/**
  * Retrieves audit logs for a user.
  */
 async function getAuditLogs(userId, limit = 50) {
@@ -121,5 +132,6 @@ module.exports = {
   logEvent,
   getAuditLogs,
   clearAuditLogs,
-  removeAuditLogByEntityId
+  removeAuditLogByEntityId,
+  syncAuditLogToMemory
 };

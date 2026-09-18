@@ -3,7 +3,7 @@ const router = express.Router();
 const { checkDuplicate, recordTransactionInCache } = require('../services/deduplicationService');
 const { mapCategoryToPot } = require('../services/potCalculator');
 const { getFinancialState, syncMemoryPotFromDb } = require('../services/financialStateStore');
-const { logEvent, removeAuditLogByEntityId } = require('../services/auditLogger');
+const { logEvent, removeAuditLogByEntityId, syncAuditLogToMemory } = require('../services/auditLogger');
 const { query, executeTransaction, isConnected } = require('../db/db');
 
 /**
@@ -78,8 +78,9 @@ router.post('/', async (req, res) => {
     }
 
     const amount = Number(rawAmountStr);
-    if (amount <= 0) {
-      return res.status(400).json({ error: 'Field "parsed_transaction.amount" must be greater than zero' });
+    // Reject NaN, Infinity, -Infinity, and non-positive values
+    if (!isFinite(amount) || isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ error: 'Field "parsed_transaction.amount" must be a finite number greater than zero' });
     }
 
     if (
@@ -103,6 +104,24 @@ router.post('/', async (req, res) => {
     const category = parsed_transaction.category.trim();
     const confValue = confidence !== undefined && confidence !== null ? Number(confidence) : 1.0;
     const createdAt = new Date().toISOString();
+
+    // ─── Transaction-type semantics (schema-documented types only) ────────────
+    // Supported: income (add), expense (subtract), transfer (add), commitment (subtract)
+    // Source of truth: schema.sql tx_type column comment.
+    const TX_TYPE_OPERATIONS = {
+      income:     'add',       // Earnings deposited into a pot
+      expense:    'subtract',  // Spending withdrawn from a pot
+      transfer:   'add',       // Money moved into a pot (e.g. bank deposit, SHG contribution)
+      commitment: 'subtract'   // Committed outflow (e.g. chit installment, loan repayment)
+    };
+
+    if (!Object.prototype.hasOwnProperty.call(TX_TYPE_OPERATIONS, txType)) {
+      return res.status(400).json({
+        error: `Field "parsed_transaction.type" must be one of: ${Object.keys(TX_TYPE_OPERATIONS).join(', ')}. Received: "${txType}"`
+      });
+    }
+
+    const potOperation = TX_TYPE_OPERATIONS[txType];
 
     // ─── Step 1: Duplicate detection (memory cache — no DB write) ────────────
     dupCheck = checkDuplicate({
@@ -180,7 +199,6 @@ router.post('/', async (req, res) => {
 
     // ─── Step 2: Map category → pot ──────────────────────────────────────────
     const targetPot = mapCategoryToPot(category);
-    const potOperation = (txType === 'expense') ? 'subtract' : 'add';
 
     const txRecord = {
       transaction_hash: dupCheck.hash,
@@ -233,13 +251,27 @@ router.post('/', async (req, res) => {
         }
 
         // 3c. Upsert pot balance atomically
+        // First check current pot balance if subtracting
+        if (potOperation === 'subtract') {
+          const potCheck = await client.query(
+            `SELECT amount FROM pots WHERE user_id = $1 AND pot_type = $2 FOR UPDATE`,
+            [trimmedUserId, targetPot]
+          );
+          const currentAmount = potCheck.rows[0] ? Number(potCheck.rows[0].amount) : 0;
+          if (currentAmount < amount) {
+            const err = new Error('Insufficient funds in pot');
+            err.status = 400;
+            throw err;
+          }
+        }
+
         const potResult = await client.query(
           `INSERT INTO pots (user_id, pot_type, amount, updated_at)
            VALUES ($1, $2, $3, NOW())
            ON CONFLICT (user_id, pot_type) DO UPDATE
              SET amount = CASE
                WHEN $4 = 'subtract'
-               THEN GREATEST(0, pots.amount - $3)
+               THEN pots.amount - $3
                ELSE pots.amount + $3
              END,
              updated_at = NOW()
@@ -251,7 +283,7 @@ router.post('/', async (req, res) => {
         potUpdate = { potType: targetPot, newAmount };
 
         // 3d. Insert audit log record atomically using same client
-        await logEvent({
+        const auditEntry = await logEvent({
           user_id: trimmedUserId,
           action: 'TRANSACTION_INGESTED',
           entity_type: 'transaction',
@@ -260,12 +292,19 @@ router.post('/', async (req, res) => {
           metadata: { txRecord, targetPot },
           client
         });
+        
+        // Temporarily store the audit entry so we can sync it to memory in step 4
+        txRecord._auditEntry = auditEntry;
       });
 
       // ─── Step 4: Memory sync AFTER successful commit ──────────────────────
       // Memory is never written before the DB commits.
       if (potUpdate) {
         syncMemoryPotFromDb(targetPot, potUpdate.newAmount);
+      }
+      if (txRecord._auditEntry) {
+        syncAuditLogToMemory(txRecord._auditEntry);
+        delete txRecord._auditEntry;
       }
     } else {
       // ─── Offline / development fallback ──────────────────────────────────
@@ -339,6 +378,10 @@ router.post('/', async (req, res) => {
           reason: 'Duplicate transaction detected at database level'
         }
       });
+    }
+
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
     }
 
     console.error('[Transactions Route] Atomic transaction failed:', err.message);

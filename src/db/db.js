@@ -24,6 +24,14 @@ const pool = new Pool({
   query_timeout: 15000,
 });
 
+function sanitizeErrorMessage(msg) {
+  if (!msg || typeof msg !== 'string') return '';
+  return msg
+    .replace(/(postgres(?:ql)?:\/\/)[^@]+@/gi, '$1***:***@')
+    .replace(/(password\s*=\s*['"]?)[^\s'";]+/gi, '$1***')
+    .replace(/(secret|token|apiKey|api_key)=([^\s&]+)/gi, '$1=***');
+}
+
 let isConnected = false;
 let connectionError = null;
 
@@ -45,7 +53,7 @@ async function checkDatabaseConnection() {
   } catch (err) {
     isConnected = false;
     // Store error type/code without credentials
-    connectionError = `${err.code || 'CONNECTION_ERROR'}: ${err.message.replace(/(postgresql?:\/\/)[^@]+@/gi, '$1***@')}`;
+    connectionError = `${err.code || 'CONNECTION_ERROR'}: ${sanitizeErrorMessage(err.message)}`;
     return false;
   }
 }
@@ -57,7 +65,12 @@ async function query(text, params) {
       `STRICT_POSTGRES mode: PostgreSQL is unreachable. ${connectionError || 'Check DATABASE_URL and network.'}`
     );
   }
-  return pool.query(text, params);
+  try {
+    return await pool.query(text, params);
+  } catch (err) {
+    err.message = sanitizeErrorMessage(err.message);
+    throw err;
+  }
 }
 
 // ─── Atomic Transaction Helper ────────────────────────────────────────────────
@@ -102,6 +115,7 @@ module.exports = {
   executeTransaction,
   checkDatabaseConnection,
   initSchema,
+  sanitizeErrorMessage,
   isConnected: () => isConnected,
   getConnectionError: () => connectionError,
 };

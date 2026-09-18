@@ -56,9 +56,15 @@ app.use((req, res) => {
 // Error Handler (Sanitizes errors, hides secrets and stack traces)
 app.use((err, req, res, next) => {
   const status = err.status || 500;
-  const message = (status === 400 && err.message.includes('JSON'))
-    ? 'Malformed JSON body'
-    : (status < 500 ? err.message : 'Internal server error');
+  let rawMessage = err.message || 'Internal server error';
+  if (status === 400 && rawMessage.includes('JSON')) {
+    rawMessage = 'Malformed JSON body';
+  } else if (status >= 500) {
+    rawMessage = 'Internal server error';
+  }
+
+  const { sanitizeErrorMessage } = require('./db/db');
+  const message = sanitizeErrorMessage(rawMessage);
 
   res.status(status).json({
     error: message,

@@ -10,7 +10,8 @@
     "test:postgres": "jest tests/integration/postgresStrict.test.js --runInBand",
     "test:dbinit": "jest tests/integration/dbInit.test.js --runInBand --verbose",
     "test:atomicity": "jest tests/integration/atomicity.test.js --runInBand --verbose",
-    "test:idempotency": "jest tests/integration/dbIdempotency.test.js --runInBand --verbose"
+    "test:idempotency": "jest tests/integration/dbIdempotency.test.js --runInBand --verbose",
+    "test:goals": "jest tests/integration/goalPersistence.test.js --runInBand --verbose"
   },
   "keywords": [
     "saathi",

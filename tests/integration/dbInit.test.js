@@ -39,6 +39,19 @@ describe('DB Initialization & Meera State Verification Suite', () => {
     if (!dbConnected) return;
     await initSchema();
     await seedMeera();
+
+    // Forcefully reset meera_001's canonical pots to fixture values.
+    // This test suite verifies exact fixture values, so it must own
+    // resetting them — seedMeera uses DO NOTHING and won't overwrite
+    // pots mutated by other test suites that ran earlier.
+    for (const [potType, amount] of Object.entries(EXPECTED_POTS)) {
+      await pool.query(
+        `INSERT INTO pots (user_id, pot_type, amount)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id, pot_type) DO UPDATE SET amount = $3`,
+        [fixture.user_id, potType, amount]
+      );
+    }
   });
 
   afterAll(async () => {

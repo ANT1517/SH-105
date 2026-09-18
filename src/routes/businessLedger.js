@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { addLedgerEntry, getLedgerEntries, getFinancialState } = require('../services/financialStateStore');
-const { logEvent } = require('../services/auditLogger');
+const { addLedgerEntry, getLedgerEntries, getFinancialState, syncLedgerMemory } = require('../services/financialStateStore');
+const { logEvent, syncAuditLogToMemory } = require('../services/auditLogger');
+const { executeTransaction, isConnected } = require('../db/db');
 
 /**
  * POST /api/ledger
@@ -33,6 +34,9 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ error: 'Revenue must be a valid number' });
       }
       rev = Number(revStr);
+      if (!isFinite(rev) || isNaN(rev)) {
+        return res.status(400).json({ error: 'Revenue must be a finite number' });
+      }
       if (rev < 0) {
         return res.status(400).json({ error: 'Revenue cannot be negative' });
       }
@@ -46,28 +50,96 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ error: 'Cost must be a valid number' });
       }
       cst = Number(cstStr);
+      if (!isFinite(cst) || isNaN(cst)) {
+        return res.status(400).json({ error: 'Cost must be a finite number' });
+      }
       if (cst < 0) {
         return res.status(400).json({ error: 'Cost cannot be negative' });
       }
     }
 
-    const entry = await addLedgerEntry(user_id, {
-      activity: String(activity || 'business').trim(),
-      revenue: rev,
-      cost: cst,
-      notes: String(notes || '')
-    });
+    const trimmedUserId = String(user_id || 'meera_001').trim();
+    const trimmedActivity = String(activity || 'pickle sales + tailoring').trim();
+    const profit = rev - cst;
+    const createdAt = new Date().toISOString();
 
-    await logEvent({
-      user_id,
-      action: 'LEDGER_ENTRY_RECORDED',
-      entity_type: 'business_ledger',
-      entity_id: entry.id,
-      new_state: entry,
-      metadata: { activity: entry.activity, profit: entry.profit }
-    });
+    let entry = null;
+    let auditEntry = null;
 
-    const updatedState = await getFinancialState(user_id);
+    if (isConnected()) {
+      await executeTransaction(async (client) => {
+        // a. Ensure user exists
+        await client.query(
+          `INSERT INTO users (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`,
+          [trimmedUserId, trimmedUserId]
+        );
+
+        // b. Insert ledger entry
+        const result = await client.query(
+          `INSERT INTO ledger_entries (user_id, activity, revenue, cost, profit, notes, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING id`,
+          [trimmedUserId, trimmedActivity, rev, cst, profit, String(notes || ''), createdAt]
+        );
+
+        const dbId = result.rows[0]?.id;
+
+        // c. Update business pot if profitable
+        if (profit > 0) {
+          await client.query(
+            `INSERT INTO pots (user_id, pot_type, amount, updated_at)
+             VALUES ($1, $2, $3, NOW())
+             ON CONFLICT (user_id, pot_type) DO UPDATE
+               SET amount = pots.amount + $3, updated_at = NOW()`,
+            [trimmedUserId, 'business', profit]
+          );
+        }
+
+        entry = {
+          id: dbId,
+          user_id: trimmedUserId,
+          activity: trimmedActivity,
+          revenue: rev,
+          cost: cst,
+          profit,
+          notes: notes || null,
+          created_at: createdAt
+        };
+
+        // d. Audit log — same transaction
+        auditEntry = await logEvent({
+          user_id: trimmedUserId,
+          action: 'LEDGER_ENTRY_RECORDED',
+          entity_type: 'business_ledger',
+          entity_id: String(dbId || ''),
+          new_state: entry,
+          metadata: { activity: trimmedActivity, profit },
+          client
+        });
+      });
+
+      // Sync memory ONLY after successful DB commit
+      if (entry) syncLedgerMemory(entry);
+      if (auditEntry) syncAuditLogToMemory(auditEntry);
+    } else {
+      // Offline / mock fallback — memory only
+      entry = await addLedgerEntry(trimmedUserId, {
+        activity: trimmedActivity,
+        revenue: rev,
+        cost: cst,
+        notes: String(notes || '')
+      });
+      await logEvent({
+        user_id: trimmedUserId,
+        action: 'LEDGER_ENTRY_RECORDED',
+        entity_type: 'business_ledger',
+        entity_id: String(entry.id || ''),
+        new_state: entry,
+        metadata: { activity: trimmedActivity, profit }
+      });
+    }
+
+    const updatedState = await getFinancialState(trimmedUserId);
 
     return res.status(201).json({
       status: 'success',
@@ -76,6 +148,9 @@ router.post('/', async (req, res) => {
       updated_financial_state: updatedState
     });
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('[BusinessLedger Route] Error:', err.message);
     return res.status(500).json({ error: 'Internal server error processing ledger entry' });
   }

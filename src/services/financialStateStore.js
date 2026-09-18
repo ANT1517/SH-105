@@ -138,7 +138,12 @@ function syncMemoryPotFromDb(potType, confirmedAmount) {
  */
 async function updatePotBalance(userId, potType, amountDelta, operation = 'add') {
   const currentAmount = Number(activeUserState.pots[potType]) || 0;
-  const newAmount = operation === 'subtract' ? Math.max(0, currentAmount - amountDelta) : currentAmount + amountDelta;
+  if (operation === 'subtract' && currentAmount < amountDelta) {
+    const err = new Error('Insufficient funds in pot');
+    err.status = 400;
+    throw err;
+  }
+  const newAmount = operation === 'subtract' ? currentAmount - amountDelta : currentAmount + amountDelta;
   
   activeUserState.pots[potType] = newAmount;
 
@@ -249,6 +254,21 @@ async function addLedgerEntry(userId, { activity, revenue, cost, notes }) {
 }
 
 /**
+ * Synchronizes ledger memory after an atomic DB commit.
+ */
+function syncLedgerMemory(entry) {
+  activeUserState.ledger.unshift(entry);
+  activeUserState.business = {
+    activity: entry.activity,
+    last_entry: {
+      revenue: entry.revenue,
+      cost: entry.cost,
+      profit: entry.profit
+    }
+  };
+}
+
+/**
  * Retrieves ledger entries.
  */
 async function getLedgerEntries(userId) {
@@ -264,29 +284,188 @@ async function getLedgerEntries(userId) {
 }
 
 /**
+ * Retrieves the active goal for a user (DB authoritative if connected).
+ */
+async function getActiveGoal(userId = 'meera_001') {
+  if (isConnected()) {
+    try {
+      const res = await query(
+        `SELECT id, user_id, name, target_amount, saved_amount, is_active, created_at, updated_at
+         FROM goals
+         WHERE user_id = $1 AND is_active = true
+         ORDER BY updated_at DESC, id DESC
+         LIMIT 1`,
+        [userId]
+      );
+      if (res.rows.length > 0) {
+        const row = res.rows[0];
+        const goalData = {
+          name: row.name,
+          target: Number(row.target_amount),
+          saved: Number(row.saved_amount)
+        };
+        // Keep activeUserState.goal in sync
+        if (userId === activeUserState.user_id) {
+          activeUserState.goal = { ...goalData };
+        }
+        return goalData;
+      }
+    } catch (err) {
+      if (process.env.STRICT_POSTGRES === 'true') {
+        throw new Error(`[Store] PostgreSQL goal query failed in STRICT_POSTGRES mode: ${err.message}`);
+      }
+      console.warn('[Store] DB goal query fallback:', err.message);
+    }
+  }
+  return activeUserState.goal;
+}
+
+/**
+ * Creates or resets the active goal for a user.
+ * Persists to PostgreSQL goals table and deactivates any previous goals.
+ */
+async function createGoal(userId, { name, target, saved = 0 }) {
+  const goalObj = {
+    name: name.trim(),
+    target: Number(target),
+    saved: Number(saved)
+  };
+
+  if (isConnected()) {
+    try {
+      // Ensure user exists first
+      await query(
+        `INSERT INTO users (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`,
+        [userId, userId]
+      );
+
+      // Deactivate older active goals for this user
+      await query(
+        `UPDATE goals SET is_active = false, updated_at = NOW() WHERE user_id = $1 AND is_active = true`,
+        [userId]
+      );
+
+      // Insert the new active goal
+      await query(
+        `INSERT INTO goals (user_id, name, target_amount, saved_amount, is_active, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, true, NOW(), NOW())`,
+        [userId, goalObj.name, goalObj.target, goalObj.saved]
+      );
+    } catch (err) {
+      if (process.env.STRICT_POSTGRES === 'true') {
+        throw new Error(`[Store] PostgreSQL goal insert failed in STRICT_POSTGRES mode: ${err.message}`);
+      }
+      console.warn('[Store] DB goal insert fallback:', err.message);
+    }
+  }
+
+  // Update in-memory state
+  if (userId === activeUserState.user_id) {
+    activeUserState.goal = { ...goalObj };
+  }
+
+  return goalObj;
+}
+
+/**
  * Updates goal progress.
  */
 async function updateGoalProgress(userId, savedDelta, targetAmount = null) {
-  const currentSaved = Number(activeUserState.goal.saved) || 0;
+  let currentTarget = Number(activeUserState.goal.target) || 0;
+  let currentSaved = Number(activeUserState.goal.saved) || 0;
+
+  if (isConnected()) {
+    try {
+      // Ensure user exists first
+      await query(
+        `INSERT INTO users (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`,
+        [userId, userId]
+      );
+
+      // Look up current active goal in DB first
+      const existing = await query(
+        `SELECT id, name, target_amount, saved_amount
+         FROM goals
+         WHERE user_id = $1 AND is_active = true
+         ORDER BY updated_at DESC, id DESC
+         LIMIT 1`,
+        [userId]
+      );
+
+      if (existing.rows.length > 0) {
+        const row = existing.rows[0];
+        const newSaved = Number(row.saved_amount) + Number(savedDelta);
+        const newTarget = targetAmount !== null ? Number(targetAmount) : Number(row.target_amount);
+
+        await query(
+          `UPDATE goals
+           SET saved_amount = $1, target_amount = $2, updated_at = NOW()
+           WHERE id = $3`,
+          [newSaved, newTarget, row.id]
+        );
+
+        const updated = {
+          name: row.name,
+          target: newTarget,
+          saved: newSaved
+        };
+
+        if (userId === activeUserState.user_id) {
+          activeUserState.goal = { ...updated };
+        }
+
+        return updated;
+      } else {
+        // If no active goal in DB, create one from in-memory fallback + delta
+        const newSaved = currentSaved + Number(savedDelta);
+        const newTarget = targetAmount !== null ? Number(targetAmount) : currentTarget;
+        const name = activeUserState.goal.name || 'Savings Goal';
+
+        await query(
+          `INSERT INTO goals (user_id, name, target_amount, saved_amount, is_active, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, true, NOW(), NOW())`,
+          [userId, name, newTarget, newSaved]
+        );
+
+        const updated = {
+          name,
+          target: newTarget,
+          saved: newSaved
+        };
+
+        if (userId === activeUserState.user_id) {
+          activeUserState.goal = { ...updated };
+        }
+
+        return updated;
+      }
+    } catch (err) {
+      if (process.env.STRICT_POSTGRES === 'true') {
+        throw new Error(`[Store] PostgreSQL goal update failed in STRICT_POSTGRES mode: ${err.message}`);
+      }
+      console.warn('[Store] DB goal update fallback:', err.message);
+    }
+  }
+
+  // In-memory update fallback
   const newSaved = currentSaved + Number(savedDelta);
-  
   if (targetAmount) {
     activeUserState.goal.target = Number(targetAmount);
   }
   activeUserState.goal.saved = newSaved;
 
-  if (isConnected()) {
-    try {
-      await query(
-        `UPDATE goals SET saved_amount = $1, target_amount = COALESCE($2, target_amount), updated_at = NOW() WHERE user_id = $3 AND is_active = true`,
-        [newSaved, targetAmount, userId]
-      );
-    } catch (err) {
-      console.warn('[Store] DB goal update failed:', err.message);
-    }
-  }
-
   return activeUserState.goal;
+}
+
+/**
+ * Synchronizes goal memory after an atomic DB commit.
+ */
+function syncGoalMemory(goal) {
+  activeUserState.goal = {
+    name: goal.name,
+    target: goal.target,
+    saved: goal.saved
+  };
 }
 
 module.exports = {
@@ -295,8 +474,12 @@ module.exports = {
   addTransaction,
   addLedgerEntry,
   getLedgerEntries,
+  getActiveGoal,
+  createGoal,
   updateGoalProgress,
   resetState,
   syncMemoryPotFromDb,
+  syncLedgerMemory,
+  syncGoalMemory,
   activeUserState
 };
