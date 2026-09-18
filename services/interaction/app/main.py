@@ -9,6 +9,7 @@ from .media import download_twilio_media
 from .transcription import transcribe_audio
 from .transaction_parser import parse_transaction, normalize_text
 from .person_b import forward_to_person_b
+from .person_c import ask_person_c
 from dotenv import load_dotenv
 
 # Configure logging
@@ -118,7 +119,9 @@ async def webhook_whatsapp(request: Request):
             logger.info(f"Normalized Input: {json.dumps(normalized)}")
             
             recorded = await forward_to_person_b(normalized)
-            response.message(f"I heard: {transcript}" + (f"\n{recorded}" if recorded else ""))
+            # Not a transaction: it's a question or a suspicious message, so Person C answers it.
+            answer = None if recorded else await ask_person_c(normalized)
+            response.message(f"I heard: {transcript}\n{recorded or answer}")
             
         except httpx.HTTPError:
             response.message("I couldn't download your voice message. Please try again.")
@@ -150,6 +153,10 @@ async def webhook_whatsapp(request: Request):
         logger.info(f"Normalized Input: {json.dumps(normalized)}")
         
         recorded = await forward_to_person_b(normalized)
-        response.message(f"Saathi received: {Body}" + (f"\n{recorded}" if recorded else ""))
+        if recorded:
+            response.message(f"Saathi received: {Body}\n{recorded}")
+        else:
+            # Not a transaction: it's a question or a suspicious message, so Person C answers it.
+            response.message(await ask_person_c(normalized))
 
     return Response(content=str(response), media_type="application/xml")

@@ -43,7 +43,18 @@ def test_mock_normalized_input_endpoint():
     assert response.json()["user_id"] == "meera_001"
 
 def test_webhook_whatsapp_with_text():
-    response = client.post(
+    # "hello" is not a transaction, so it is answered by Person C (stubbed here) rather than echoed.
+    from unittest.mock import AsyncMock, MagicMock, patch
+    stub = MagicMock(status_code=200)
+    stub.json.return_value = {"response_text": "Hello! How can I help with your money today?"}
+    with patch("app.person_c.httpx.AsyncClient.post", new_callable=AsyncMock, return_value=stub):
+        response = _post_hello()
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/xml"
+    assert "Hello! How can I help with your money today?" in response.text
+
+def _post_hello():
+    return client.post(
         "/webhooks/whatsapp",
         data={
             "From": "whatsapp:+1234567890",
@@ -52,9 +63,6 @@ def test_webhook_whatsapp_with_text():
             "NumMedia": "0"
         }
     )
-    assert response.status_code == 200
-    assert response.headers["content-type"] == "application/xml"
-    assert "Saathi received: hello" in response.text
 
 def test_webhook_whatsapp_empty_body():
     response = client.post(
