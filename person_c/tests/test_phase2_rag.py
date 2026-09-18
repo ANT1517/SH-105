@@ -34,6 +34,13 @@ def test_rag_ingestion_modules_represented(test_collection):
     assert modules == {"Saving & Goals", "Loans", "Money Management"}
     assert all("source_class" in m for m in result["metadatas"])
 
+def test_rag_ingestion_no_research_source(test_collection):
+    result = test_collection.get()
+    for meta in result["metadatas"]:
+        assert meta.get("source_class") != "research", "Prototype research sources should be removed"
+        assert meta.get("source_url") is not None
+        assert meta.get("source_name") is not None
+
 # RAG RETRIEVAL
 # RAG RETRIEVAL
 def test_rag_retrieval_money_management(retriever):

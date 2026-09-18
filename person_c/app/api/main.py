@@ -64,6 +64,22 @@ def get_safety_service() -> SafetyService:
 def get_person_b_client() -> PersonBClient:
     return _person_b_client
 
+# OCR Service
+if is_testing:
+    from ..ocr.engine import MockOCREngine
+    _ocr_engine = MockOCREngine()
+else:
+    from ..ocr.engine import PaddleOCREngine
+    _ocr_engine = PaddleOCREngine()
+
+from ..ocr.parser import OCRParser
+from ..ocr.service import OCRService
+_ocr_parser = OCRParser()
+_ocr_service = OCRService(_ocr_engine, _ocr_parser)
+
+def get_ocr_service() -> OCRService:
+    return _ocr_service
+
 @app.post("/api/v1/integration/person_a/guidance", response_model=PersonCResponse)
 async def person_a_integration(
     request: PersonAIntegrationRequest,
@@ -176,3 +192,11 @@ async def get_guidance(
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+from fastapi import UploadFile, File
+@app.post("/api/v1/ocr/receipt")
+async def process_receipt(file: UploadFile = File(...), ocr_service: OCRService = Depends(get_ocr_service)):
+    if file.content_type not in ["image/jpeg", "image/png"]:
+        raise HTTPException(status_code=400, detail="Only JPEG and PNG formats are supported.")
+    image_bytes = await file.read()
+    return ocr_service.process_receipt(image_bytes)

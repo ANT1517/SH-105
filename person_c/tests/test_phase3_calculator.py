@@ -60,3 +60,31 @@ def test_calculator_is_deterministic():
     facts1 = calculate_financial_facts(state)
     facts2 = calculate_financial_facts(state)
     assert facts1 == facts2
+
+def test_calculator_saved_zero():
+    state = get_meera_state()
+    state.goal.saved = 0.0
+    facts = calculate_financial_facts(state)
+    assert facts.goal_gap == 20000.0
+
+def test_calculator_target_zero():
+    state = get_meera_state()
+    state.goal.target = 0.0
+    state.goal.saved = 0.0
+    facts = calculate_financial_facts(state)
+    assert facts.goal_gap == 0.0
+
+def test_calculator_large_values():
+    state = get_meera_state()
+    state.goal.target = 999999999.0
+    state.goal.saved = 111111111.0
+    facts = calculate_financial_facts(state)
+    assert facts.goal_gap == 888888888.0
+
+def test_calculator_negative_values():
+    state = get_meera_state()
+    state.goal.target = 20000.0
+    state.goal.saved = -5000.0
+    facts = calculate_financial_facts(state)
+    assert facts.goal_gap == 25000.0
+

@@ -62,6 +62,13 @@ def test_b_mapping_invalid_data():
     with pytest.raises(ValueError):
         map_b_to_c_state(data)
 
+def test_b_mapping_extra_fields():
+    # Extra fields are safely ignored
+    data = get_meera_b_response()
+    data["extra_unknown_field"] = "should be ignored"
+    c_state = map_b_to_c_state(data)
+    assert not hasattr(c_state, "extra_unknown_field")
+
 @patch("app.integration.person_b.httpx.AsyncClient.get")
 def test_a_integration_education(mock_get):
     # 9. Person A request can reach Person C.
@@ -125,6 +132,20 @@ def test_a_integration_simulator(mock_get):
     assert data["mode"] == "simulator"
     assert "Gap=12000.0" in data["response_text"]
     assert "TIER 1" in data["response_text"]
+
+@patch("app.integration.person_b.httpx.AsyncClient.get", new_callable=AsyncMock)
+def test_integration_b_failure_404(mock_get):
+    mock_get.return_value = httpx.Response(404, request=httpx.Request("GET", "http://test"))
+    
+    payload = {
+        "user_id": "unknown_user",
+        "request_mode": "personalized"
+    }
+    
+    resp = client.post("/api/v1/integration/person_a/guidance", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "unable to access your financial information" in data["response_text"]
 
 @patch("app.integration.person_b.httpx.AsyncClient.get", new_callable=AsyncMock)
 def test_integration_b_failure(mock_get):

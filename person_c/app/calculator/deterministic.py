@@ -14,8 +14,11 @@ def calculate_financial_facts(state: FinancialState) -> CalculatedFacts:
     # Calculate goal gap
     # If negative values are passed, FinancialState validation should catch it.
     # We ensure gap is not negative.
-    gap = state.goal.target - state.goal.saved
-    goal_gap = max(0.0, gap)
+    if state.goal:
+        gap = state.goal.target - state.goal.saved
+        goal_gap = max(0.0, gap)
+    else:
+        goal_gap = 0.0
     
     # Extract pots explicitly
     pots = {

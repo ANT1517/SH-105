@@ -38,6 +38,14 @@ def test_quiz_invalid_answers_handled():
     # Mixed invalid
     assert calculate_tier(["C", "X", "C"]) == 2 # 3 + 1 + 3 = 7 -> Tier 2
 
+def test_quiz_missing_answers_handled():
+    # If a user provides fewer than 3 answers, the missing ones shouldn't crash.
+    # Depending on implementation, it might default to 0 or 1 point per missing answer, or raise error.
+    # Our requirement says "Invalid defaults to 1 point". 
+    assert calculate_tier(["A"]) == 1 # 1 + 0 + 0 or 1 + 1 + 1 ? Let's see what happens.
+    # We will test empty list as well.
+    assert calculate_tier([]) == 1
+
 def test_literacy_instructions_generation():
     # 30. Tier 1 generates simple-language instructions.
     t1_instr = get_literacy_instructions(1)

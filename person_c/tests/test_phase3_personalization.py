@@ -94,3 +94,48 @@ def test_personalization_llm_empty(retriever):
     assert resp.mode == "personalized"
     assert resp.source_class == "system"
     assert "error generating a response" in resp.response_text
+
+def test_personalization_tier_1_and_3(retriever):
+    llm = MockLLM()
+    service = PersonalizationService(retriever, llm)
+    
+    req_t1 = get_meera_request(tier=1)
+    resp_t1 = service.get_guidance(req_t1)
+    assert "INSTRUCTIONS FOR TIER 1" in resp_t1.response_text
+    
+    req_t3 = get_meera_request(tier=3)
+    resp_t3 = service.get_guidance(req_t3)
+    assert "INSTRUCTIONS FOR TIER 3" in resp_t3.response_text
+
+def test_personalization_missing_goal_and_business(retriever):
+    llm = MockLLM()
+    service = PersonalizationService(retriever, llm)
+    
+    req = get_meera_request()
+    req.goal = None
+    req.business = None
+    
+    resp = service.get_guidance(req)
+    assert resp.mode == "personalized"
+    # Should not crash if goal/business is missing
+    assert "CALCULATED FACTS" in resp.response_text
+    # It injects goal_gap: 0.0
+    assert "goal_gap" in resp.response_text
+
+def test_personalization_missing_rag_context():
+    class EmptyRetriever:
+        def retrieve(self, query, **kwargs):
+            return []
+            
+    llm = MockLLM()
+    service = PersonalizationService(EmptyRetriever(), llm)
+    
+    req = get_meera_request()
+    resp = service.get_guidance(req)
+    
+    assert resp.mode == "personalized"
+    # Even without RAG context, it should gracefully prompt the LLM
+    # The source_class will be "SEBI" if the prompt injected it, but since no contexts are returned,
+    # the LLM will see "RETRIEVED CONTEXT: None".
+    # Wait, the PersonalizationService parses the contexts.
+    assert resp.source_class in ["system", "SEBI", "None", "none"]

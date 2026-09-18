@@ -88,6 +88,15 @@ def test_legitimate_debit():
     signals = detect_signals(msg)
     assert len(signals) == 0
 
+def test_legitimate_kyc_statement():
+    # Ensure benign language doesn't trigger false positives
+    msg = "I need to update my KYC at my bank."
+    signals = detect_signals(msg)
+    # The current rule might trigger KYC urgency if "kyc" is seen without negative context,
+    # let's verify it's safe. If it triggers CAUTION, that's fine but it shouldn't be SUSPICIOUS.
+    res = escalate_signals(signals)
+    assert res.classification in ["SAFE", "CAUTION"]
+
 def test_legitimate_statement():
     # 19. Legitimate statement notification is not automatically suspicious
     msg = "Your monthly statement is now available."

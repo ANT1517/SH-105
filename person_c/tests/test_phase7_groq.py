@@ -40,6 +40,14 @@ def test_groq_llm_api_failure(mock_groq_class):
     resp = llm.generate_response("What is saving?", contexts)
     assert resp == ""
 
+def test_groq_llm_missing_api_key():
+    # If API key is None, it should handle gracefully
+    llm = GroqLLM(api_key=None)
+    # The client might throw an error on init or on request, but our LLM class catches it
+    contexts = [RetrievedContext(text="Some context", metadata={}, score=1.0)]
+    resp = llm.generate_response("What is saving?", contexts)
+    assert "retrieved material does not contain enough information" in resp
+
 @patch("groq.Groq")
 def test_groq_llm_no_context(mock_groq_class):
     mock_client = MagicMock()
