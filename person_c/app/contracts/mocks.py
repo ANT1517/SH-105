@@ -1,0 +1,25 @@
+from .input import FinancialState
+
+DEMO_FIXTURE_DICT = {
+    "cash": 2000,
+    "bank": 5000,
+    "shg": 2500,
+    "chit_committed": 4000,
+    "post_office": 5000,
+    "business": {
+        "activity": "pickle sales + tailoring",
+        "last_entry": {
+            "revenue": 1000,
+            "cost": 600,
+            "profit": 400
+        }
+    },
+    "goal": {
+        "name": "Education",
+        "target": 20000,
+        "saved": 8000
+    }
+}
+
+def get_mock_financial_state() -> FinancialState:
+    return FinancialState(**DEMO_FIXTURE_DICT)
