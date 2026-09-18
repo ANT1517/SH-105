@@ -30,11 +30,13 @@ CREATE TABLE IF NOT EXISTS transactions (
     category VARCHAR(64) NOT NULL,
     target_pot VARCHAR(32) NOT NULL,
     confidence NUMERIC(4, 2) DEFAULT 1.0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_transaction_hash UNIQUE (transaction_hash)
 );
 
 CREATE INDEX IF NOT EXISTS idx_transactions_user_time ON transactions(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_transactions_hash ON transactions(transaction_hash);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_unique_hash ON transactions(transaction_hash);
 
 CREATE TABLE IF NOT EXISTS ledger_entries (
     id SERIAL PRIMARY KEY,

@@ -163,6 +163,12 @@ async function updatePotBalance(userId, potType, amountDelta, operation = 'add')
  * Adds a new transaction.
  */
 async function addTransaction(txRecord) {
+  const existing = activeUserState.transactions.find(t => t.transaction_hash === txRecord.transaction_hash);
+  if (existing) {
+    const dupErr = new Error('Duplicate transaction detected in memory store');
+    dupErr.isDuplicate = true;
+    throw dupErr;
+  }
   activeUserState.transactions.unshift(txRecord);
 
   if (isConnected()) {

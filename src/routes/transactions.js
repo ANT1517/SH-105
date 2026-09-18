@@ -4,7 +4,7 @@ const { checkDuplicate, recordTransactionInCache } = require('../services/dedupl
 const { mapCategoryToPot } = require('../services/potCalculator');
 const { getFinancialState, syncMemoryPotFromDb } = require('../services/financialStateStore');
 const { logEvent, removeAuditLogByEntityId } = require('../services/auditLogger');
-const { executeTransaction, isConnected } = require('../db/db');
+const { query, executeTransaction, isConnected } = require('../db/db');
 
 /**
  * POST /api/transactions
@@ -21,6 +21,7 @@ const { executeTransaction, isConnected } = require('../db/db');
  * Strictly adheres to Person A contract without modifying payload schema.
  */
 router.post('/', async (req, res) => {
+  let dupCheck = null;
   try {
     const body = req.body;
 
@@ -104,7 +105,7 @@ router.post('/', async (req, res) => {
     const createdAt = new Date().toISOString();
 
     // ─── Step 1: Duplicate detection (memory cache — no DB write) ────────────
-    const dupCheck = checkDuplicate({
+    dupCheck = checkDuplicate({
       user_id: trimmedUserId,
       channel: channel.trim(),
       raw_text,
@@ -126,6 +127,55 @@ router.post('/', async (req, res) => {
         message: 'Duplicate transaction detected. Ignored to protect financial memory.',
         details: dupCheck
       });
+    }
+
+    // ─── Step 1b: Database-level duplicate pre-check ────────────────────────
+    // If in-memory cache missed (e.g. server restart, multi-instance, cache reset),
+    // check the persistent database as the authoritative source of truth.
+    if (isConnected()) {
+      try {
+        const existingTx = await query(
+          `SELECT created_at FROM transactions WHERE transaction_hash = $1 LIMIT 1`,
+          [dupCheck.hash]
+        );
+        if (existingTx.rows.length > 0) {
+          recordTransactionInCache(dupCheck.hash, {
+            user_id: trimmedUserId,
+            channel: channel.trim(),
+            raw_text,
+            normalized_text,
+            tx_type: txType,
+            amount,
+            category
+          });
+
+          await logEvent({
+            user_id: trimmedUserId,
+            action: 'DUPLICATE_TRANSACTION_BLOCKED',
+            entity_type: 'transaction',
+            entity_id: dupCheck.hash,
+            metadata: {
+              reason: 'Duplicate transaction detected in persistent database',
+              raw_text,
+              amount,
+              category
+            }
+          });
+
+          return res.status(409).json({
+            status: 'duplicate',
+            message: 'Duplicate transaction detected. Ignored to protect financial memory.',
+            details: {
+              isDuplicate: true,
+              hash: dupCheck.hash,
+              reason: 'Duplicate transaction detected in persistent database',
+              firstSeenAt: existingTx.rows[0].created_at
+            }
+          });
+        }
+      } catch (dbCheckErr) {
+        console.warn('[Transactions Route] DB duplicate pre-check warning:', dbCheckErr.message);
+      }
     }
 
     // ─── Step 2: Map category → pot ──────────────────────────────────────────
@@ -160,12 +210,14 @@ router.post('/', async (req, res) => {
           [trimmedUserId, trimmedUserId]
         );
 
-        // 3b. Insert transaction record
-        await client.query(
+        // 3b. Insert transaction record (with database-level uniqueness enforcement)
+        const txResult = await client.query(
           `INSERT INTO transactions
              (transaction_hash, user_id, channel, input_type, raw_text, normalized_text,
               tx_type, amount, category, target_pot, confidence, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+           ON CONFLICT (transaction_hash) DO NOTHING
+           RETURNING id`,
           [
             txRecord.transaction_hash, txRecord.user_id, txRecord.channel,
             txRecord.input_type, txRecord.raw_text, txRecord.normalized_text,
@@ -173,6 +225,12 @@ router.post('/', async (req, res) => {
             txRecord.target_pot, txRecord.confidence, txRecord.created_at
           ]
         );
+
+        if (txResult.rows.length === 0) {
+          const dupErr = new Error('Duplicate transaction detected at database level');
+          dupErr.isDuplicate = true;
+          throw dupErr;
+        }
 
         // 3c. Upsert pot balance atomically
         const potResult = await client.query(
@@ -244,6 +302,45 @@ router.post('/', async (req, res) => {
     if (dupCheck && dupCheck.hash) {
       removeAuditLogByEntityId(dupCheck.hash);
     }
+
+    if (err.isDuplicate || err.code === '23505') {
+      const rawTextVal = req.body?.raw_text || '';
+      const amountVal = req.body?.parsed_transaction?.amount;
+      const catVal = req.body?.parsed_transaction?.category;
+
+      if (dupCheck && dupCheck.hash) {
+        recordTransactionInCache(dupCheck.hash, {
+          user_id: req.body?.user_id,
+          raw_text: rawTextVal,
+          amount: amountVal,
+          category: catVal
+        });
+
+        await logEvent({
+          user_id: req.body?.user_id ? String(req.body.user_id).trim() : 'meera_001',
+          action: 'DUPLICATE_TRANSACTION_BLOCKED',
+          entity_type: 'transaction',
+          entity_id: dupCheck.hash,
+          metadata: {
+            reason: 'Duplicate transaction detected at database level (unique constraint)',
+            raw_text: rawTextVal,
+            amount: amountVal,
+            category: catVal
+          }
+        });
+      }
+
+      return res.status(409).json({
+        status: 'duplicate',
+        message: 'Duplicate transaction detected. Ignored to protect financial memory.',
+        details: {
+          isDuplicate: true,
+          hash: dupCheck ? dupCheck.hash : null,
+          reason: 'Duplicate transaction detected at database level'
+        }
+      });
+    }
+
     console.error('[Transactions Route] Atomic transaction failed:', err.message);
     return res.status(500).json({ error: 'Internal server error processing transaction' });
   }
