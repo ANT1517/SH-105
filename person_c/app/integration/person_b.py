@@ -7,7 +7,11 @@ def map_b_to_c_state(data: dict) -> FinancialState:
     """
     Transforms Person B's external API response into Person C's internal FinancialState contract.
     Ensures safe fallbacks for missing or malformed keys.
+
+    Person B's live GET /api/financial-state nests balances under "pots" ({"pots": {"cash": ...}});
+    its /mock endpoint (the Section 2 fixture) is flat. Both shapes are accepted.
     """
+    pots = data.get("pots") if isinstance(data.get("pots"), dict) else data
     business_data = data.get("business")
     business_state = None
     if business_data and isinstance(business_data, dict):
@@ -31,18 +35,18 @@ def map_b_to_c_state(data: dict) -> FinancialState:
         )
 
     return FinancialState(
-        cash=float(data.get("cash", 0.0)),
-        bank=float(data.get("bank", 0.0)),
-        shg=float(data.get("shg", 0.0)),
-        chit_committed=float(data.get("chit_committed", 0.0)),
-        post_office=float(data.get("post_office", 0.0)),
+        cash=float(pots.get("cash", 0.0)),
+        bank=float(pots.get("bank", 0.0)),
+        shg=float(pots.get("shg", 0.0)),
+        chit_committed=float(pots.get("chit_committed", 0.0)),
+        post_office=float(pots.get("post_office", 0.0)),
         business=business_state,
         goal=goal_state
     )
 
 class PersonBClient:
     def __init__(self):
-        self.base_url = os.environ.get("PERSON_B_API_URL", "http://localhost:8001")
+        self.base_url = os.environ.get("PERSON_B_API_URL", "http://localhost:5000")
         self.timeout = int(os.environ.get("PERSON_B_TIMEOUT", "5"))
 
     async def get_financial_state(self, user_id: str) -> Optional[FinancialState]:
@@ -61,6 +65,7 @@ class PersonBClient:
                 response = await client.get(url, params=params)
                 
             if response.status_code != 200:
+                # e.g. 404 unknown_user (Person B no longer serves Meera's state for unknown users) or 5xx.
                 return None
                 
             data = response.json()
