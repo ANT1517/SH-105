@@ -44,6 +44,13 @@ def map_b_to_c_state(data: dict) -> FinancialState:
         goal=goal_state
     )
 
+class UnknownUserError(Exception):
+    """Person B has no financial state for this user (HTTP 404 unknown_user, or no user_id given).
+
+    Distinct from an outage: get_financial_state returns None for network failures / 5xx.
+    """
+
+
 class PersonBClient:
     def __init__(self):
         self.base_url = os.environ.get("PERSON_B_API_URL", "http://localhost:5000")
@@ -52,10 +59,12 @@ class PersonBClient:
     async def get_financial_state(self, user_id: str) -> Optional[FinancialState]:
         """
         Fetches financial state from Person B for a given user.
-        Returns None on any network failure or malformed payload, ensuring graceful degradation.
+        Returns None on any network failure, non-200/404 status or malformed payload (Person B
+        unavailable -> graceful degradation). Raises UnknownUserError when Person B says the user
+        does not exist (404), or when no user_id was supplied.
         """
         if not user_id:
-            return None
+            raise UnknownUserError("no user_id supplied")
             
         url = f"{self.base_url}/api/financial-state"
         params = {"user_id": user_id}
@@ -64,8 +73,10 @@ class PersonBClient:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(url, params=params)
                 
+            if response.status_code == 404:
+                # Person B returns 404 unknown_user instead of serving Meera's state for unknown users.
+                raise UnknownUserError(user_id)
             if response.status_code != 200:
-                # e.g. 404 unknown_user (Person B no longer serves Meera's state for unknown users) or 5xx.
                 return None
                 
             data = response.json()

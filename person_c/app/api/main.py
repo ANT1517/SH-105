@@ -22,7 +22,7 @@ from ..simulator.service import SimulatorService
 from ..contracts.safety import SafetyRequest
 from ..safety.service import SafetyService
 from ..integration.person_a import PersonAIntegrationRequest
-from ..integration.person_b import PersonBClient
+from ..integration.person_b import PersonBClient, UnknownUserError
 from ..contracts.input import GuidanceRequest
 from ..contracts.simulator import SimulatorInput
 
@@ -96,8 +96,17 @@ async def person_a_integration(
         return education_service.get_guidance(request.question or "")
         
     # For personalized and simulator modes, we need the financial state from Person B
-    financial_state = await person_b_client.get_financial_state(request.user_id)
-    
+    try:
+        financial_state = await person_b_client.get_financial_state(request.user_id)
+    except UnknownUserError:
+        # Not an outage: retrying won't help, so don't tell the user to "try again later".
+        return PersonCResponse(
+            response_text="We couldn't find a Saathi account for you yet, so we can't give personalised guidance. Please check with support or record a first transaction to get started.",
+            source_class="system",
+            mode=request.request_mode,
+            disclaimer=True
+        )
+
     if not financial_state:
         # Graceful failure if Person B is down or fails
         return PersonCResponse(

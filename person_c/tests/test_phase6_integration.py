@@ -145,7 +145,9 @@ def test_integration_b_failure_404(mock_get):
     resp = client.post("/api/v1/integration/person_a/guidance", json=payload)
     assert resp.status_code == 200
     data = resp.json()
-    assert "unable to access your financial information" in data["response_text"]
+    # Unknown user is not an outage: must not say "try again later".
+    assert "couldn't find a Saathi account" in data["response_text"]
+    assert "try again later" not in data["response_text"]
 
 @patch("app.integration.person_b.httpx.AsyncClient.get", new_callable=AsyncMock)
 def test_integration_b_failure(mock_get):

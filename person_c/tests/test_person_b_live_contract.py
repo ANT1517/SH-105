@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.main import app
-from app.integration.person_b import PersonBClient, map_b_to_c_state
+from app.integration.person_b import PersonBClient, UnknownUserError, map_b_to_c_state
 
 client = TestClient(app)
 
@@ -64,9 +64,25 @@ async def test_client_calls_live_endpoint_not_mock(mock_get):
 
 @pytest.mark.asyncio
 @patch("app.integration.person_b.httpx.AsyncClient.get", new_callable=AsyncMock)
-async def test_unknown_user_404_returns_none_without_raising(mock_get):
+async def test_unknown_user_404_raises_unknown_user_error(mock_get):
     mock_get.return_value = _resp(404, {"error": "unknown_user"})
-    assert await PersonBClient().get_financial_state("nobody") is None
+    with pytest.raises(UnknownUserError):
+        await PersonBClient().get_financial_state("nobody")
+
+
+@pytest.mark.asyncio
+@patch("app.integration.person_b.httpx.AsyncClient.get", new_callable=AsyncMock)
+async def test_outage_still_returns_none_not_unknown_user(mock_get):
+    mock_get.return_value = _resp(503, {})
+    assert await PersonBClient().get_financial_state("meera_001") is None
+    mock_get.side_effect = httpx.ConnectError("refused")
+    assert await PersonBClient().get_financial_state("meera_001") is None
+
+
+@pytest.mark.asyncio
+async def test_missing_user_id_is_unknown_user():
+    with pytest.raises(UnknownUserError):
+        await PersonBClient().get_financial_state(None)
 
 
 @patch("app.integration.person_b.httpx.AsyncClient.get", new_callable=AsyncMock)
@@ -76,7 +92,8 @@ def test_api_degrades_gracefully_on_b_404(mock_get):
                     json={"user_id": "nobody", "request_mode": "personalized", "question": "How am I doing?"})
     assert r.status_code == 200
     assert r.json()["source_class"] == "system"
-    assert "unable to access your financial information" in r.json()["response_text"]
+    assert "couldn't find a Saathi account" in r.json()["response_text"]
+    assert "try again later" not in r.json()["response_text"]
 
 
 @patch("app.integration.person_b.httpx.AsyncClient.get", new_callable=AsyncMock)
@@ -85,3 +102,4 @@ def test_api_degrades_gracefully_when_b_is_down(mock_get):
     r = client.post("/api/v1/integration/person_a/guidance",
                     json={"user_id": "meera_001", "request_mode": "personalized", "question": "How am I doing?"})
     assert r.status_code == 200 and r.json()["source_class"] == "system"
+    assert "unable to access your financial information" in r.json()["response_text"]

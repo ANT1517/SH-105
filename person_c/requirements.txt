@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+pydantic
+httpx<0.28   # >=0.28 breaks starlette's TestClient (fastapi 0.100 / starlette 0.27)
+python-dotenv
+chromadb
+groq
+pytest
+pytest-asyncio
+python-multipart
+# NOTE: running the service outside pytest also needs paddleocr (+ paddlepaddle) for /api/v1/ocr/receipt;
+# app/api/main.py imports it at startup unless run under pytest. Not listed here (heavy).

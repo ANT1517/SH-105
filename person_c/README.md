@@ -2,6 +2,8 @@
 
 Person C is the financial education, personalization, and safety module for the Saathi project.
 
+**Default ports:** Person A / Dev-A interaction service `8001` (per its README), Person B `5000` (`PORT` in `.env`), Person C `8000` (uvicorn default; no port is configured in this repo). Person C reaches Person B via `PERSON_B_API_URL` (default `http://localhost:5000`). No two services collide.
+
 ## Real Source-Backed RAG Architecture (Phase 8)
 
 Person C uses a Retrieval-Augmented Generation (RAG) architecture powered by Chroma DB to provide grounded financial guidance.
