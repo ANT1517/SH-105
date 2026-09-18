@@ -7,6 +7,7 @@ import httpx
 import os
 from .media import download_twilio_media
 from .transcription import transcribe_audio
+from .transaction_parser import parse_transaction, normalize_text
 from dotenv import load_dotenv
 
 # Configure logging
@@ -101,14 +102,17 @@ async def webhook_whatsapp(request: Request):
                 return Response(content=str(response), media_type="application/xml")
                 
             # Create normalized input
+            norm_text = normalize_text(transcript)
+            parsed_tx = parse_transaction(norm_text)
+            
             normalized = {
                 "user_id": From,
                 "channel": "whatsapp",
                 "input_type": "voice",
                 "raw_text": transcript,
-                "normalized_text": transcript,
-                "parsed_transaction": None,
-                "confidence": 0.0
+                "normalized_text": norm_text,
+                "parsed_transaction": parsed_tx,
+                "confidence": 0.95 if parsed_tx else 0.0
             }
             logger.info(f"Normalized Input: {json.dumps(normalized)}")
             
@@ -125,10 +129,24 @@ async def webhook_whatsapp(request: Request):
                 
         return Response(content=str(response), media_type="application/xml")
 
-    # existing Phase 1 text handling
+    # Phase 3 text handling
     if not Body or not Body.strip():
         response.message("Saathi received your message. Please send some text.")
     else:
+        norm_text = normalize_text(Body)
+        parsed_tx = parse_transaction(norm_text)
+        
+        normalized = {
+            "user_id": From,
+            "channel": "whatsapp",
+            "input_type": "text",
+            "raw_text": Body,
+            "normalized_text": norm_text,
+            "parsed_transaction": parsed_tx,
+            "confidence": 0.95 if parsed_tx else 0.0
+        }
+        logger.info(f"Normalized Input: {json.dumps(normalized)}")
+        
         response.message(f"Saathi received: {Body}")
 
     return Response(content=str(response), media_type="application/xml")
