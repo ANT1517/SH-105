@@ -1,4 +1,8 @@
 from fastapi import FastAPI, HTTPException, Depends
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 from ..contracts.input import FinancialState, GuidanceRequest
 from ..contracts.output import PersonCResponse
 import chromadb
@@ -26,7 +30,19 @@ from ..contracts.simulator import SimulatorInput
 _chroma_client = chromadb.EphemeralClient()
 _collection = setup_chroma_collection(_chroma_client)
 _retriever = ChromaRetriever(_collection)
-_llm = MockLLM()
+
+import sys
+is_testing = any('pytest' in arg for arg in sys.argv)
+groq_api_key = os.environ.get("GROQ_API_KEY")
+
+if groq_api_key and not is_testing:
+    from ..education.llm import GroqLLM
+    groq_model = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
+    _llm = GroqLLM(api_key=groq_api_key, model=groq_model)
+else:
+    from ..education.llm import MockLLM
+    _llm = MockLLM()
+    
 _education_service = EducationService(_retriever, _llm)
 _personalization_service = PersonalizationService(_retriever, _llm)
 _simulator_service = SimulatorService(_retriever, _llm)

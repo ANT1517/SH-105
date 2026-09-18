@@ -9,15 +9,15 @@ def test_api_education_request_success():
     # 27. The endpoint returns the existing response contract.
     payload = DEMO_FIXTURE_DICT.copy()
     payload["request_mode"] = "education"
-    payload["question"] = "What is a money map?"
+    payload["question"] = "What is a savings goal?"
     
     response = client.post("/api/v1/guidance", json=payload)
     assert response.status_code == 200
     data = response.json()
     assert data["mode"] == "education"
-    assert data["source_class"] == "RBI/SEBI/NCFE"
+    assert data["source_class"] == "SEBI"
     assert "Based on the provided context:" in data["response_text"]
-    assert "Money Map" in data["response_text"]
+    assert "Source: SEBI Investor" in data["response_text"]
     assert data["disclaimer"] is True
 
 def test_api_education_request_missing_question():

@@ -61,7 +61,7 @@ def test_api_education_mode_still_works():
     # 47. Existing Phase 1/2 API behavior is not broken.
     payload = get_meera_payload()
     payload["request_mode"] = "education"
-    payload["question"] = "What is a money map?"
+    payload["question"] = "What is a savings goal?"
     
     resp = client.post("/api/v1/guidance", json=payload)
     assert resp.status_code == 200
