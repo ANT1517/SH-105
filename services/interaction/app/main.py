@@ -8,6 +8,7 @@ import os
 from .media import download_twilio_media
 from .transcription import transcribe_audio
 from .transaction_parser import parse_transaction, normalize_text
+from .person_b import forward_to_person_b
 from dotenv import load_dotenv
 
 # Configure logging
@@ -116,7 +117,8 @@ async def webhook_whatsapp(request: Request):
             }
             logger.info(f"Normalized Input: {json.dumps(normalized)}")
             
-            response.message(f"I heard: {transcript}")
+            recorded = await forward_to_person_b(normalized)
+            response.message(f"I heard: {transcript}" + (f"\n{recorded}" if recorded else ""))
             
         except httpx.HTTPError:
             response.message("I couldn't download your voice message. Please try again.")
@@ -147,6 +149,7 @@ async def webhook_whatsapp(request: Request):
         }
         logger.info(f"Normalized Input: {json.dumps(normalized)}")
         
-        response.message(f"Saathi received: {Body}")
+        recorded = await forward_to_person_b(normalized)
+        response.message(f"Saathi received: {Body}" + (f"\n{recorded}" if recorded else ""))
 
     return Response(content=str(response), media_type="application/xml")
