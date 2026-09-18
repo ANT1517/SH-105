@@ -1,0 +1,31 @@
+# Agent Final Output Response - Phase 2
+
+I have successfully implemented Phase 2 according to your requirements.
+
+### 1. Requirements Updated
+- Added `openai-whisper` and its required ML dependencies to `requirements.txt`.
+- Leveraged `httpx` for securely downloading the Twilio audio media.
+
+### 2. Audio Validation & Webhook Enhancement
+- Updated `POST /webhooks/whatsapp` to intelligently switch between text parsing and audio downloading based on `NumMedia`.
+- Added strict checks to gracefully reject files if they don't start with an `audio/` MIME type by inspecting `MediaContentType0`.
+
+### 3. Media Downloading & Whisper
+- Implemented `download_twilio_media` in `app/media.py` which streams audio down to `tempfile.gettempdir()` using Twilio credentials explicitly scoped to environment variables (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`).
+- Implemented `transcribe_audio` in `app/transcription.py` using `openai-whisper`'s fast `tiny` model.
+- Created robust `try/finally` blocks ensuring the temporary downloaded audio is always deleted, even during transcription failures.
+
+### 4. Normalized Input Contract
+- After transcription, the system successfully creates a mock Phase 0 contract with `input_type` as `"voice"` and populates both `raw_text` and `normalized_text` with the transcript.
+- `parsed_transaction` remains strictly `null` as explicitly specified.
+- Securely logs incoming interactions without exposing audio buffers or secret keys.
+
+### 5. Robust Unit Tests
+- Fully mocked out network downloads and Whisper abstractions.
+- Added comprehensive test suites in `tests/test_contract.py` confirming handling for correct audio processing, non-audio attachments, missing URLs, and Whisper crashes.
+- Verified Phase 0 and Phase 1 routes still work perfectly via `pytest` (10 passed).
+
+### 6. Documentation
+- Updated `README.md` to describe the Phase 2 workflow.
+
+You are now able to safely start the application and test Phase 2 by sending real voice notes via your Twilio number!

@@ -1,0 +1,13 @@
+{
+  "user_id": "meera_001",
+  "channel": "whatsapp",
+  "input_type": "voice",
+  "raw_text": "I earned 800 from tailoring today.",
+  "normalized_text": "I earned 800 from tailoring today.",
+  "parsed_transaction": {
+    "type": "income",
+    "amount": 800,
+    "category": "business"
+  },
+  "confidence": 0.97
+}

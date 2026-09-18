@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+jsonschema
+pytest
+twilio
+python-multipart
+httpx
+openai-whisper
+python-dotenv

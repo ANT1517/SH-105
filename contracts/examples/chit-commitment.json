@@ -1,0 +1,13 @@
+{
+  "user_id": "meera_001",
+  "channel": "whatsapp",
+  "input_type": "text",
+  "raw_text": "My chit payment is 2000 every month.",
+  "normalized_text": "My chit payment is 2000 every month.",
+  "parsed_transaction": {
+    "type": "commitment",
+    "amount": 2000,
+    "category": "chit"
+  },
+  "confidence": 0.96
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Normalized Input",
+  "type": "object",
+  "properties": {
+    "user_id": { "type": "string" },
+    "channel": { "enum": ["whatsapp"] },
+    "input_type": { "enum": ["text", "voice", "sms"] },
+    "raw_text": { "type": "string" },
+    "normalized_text": { "type": "string" },
+    "parsed_transaction": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "enum": ["income", "expense", "saving", "commitment", "business"] },
+            "amount": { "type": "number", "minimum": 0 },
+            "category": { "type": "string" }
+          },
+          "required": ["type", "amount", "category"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+  },
+  "required": [
+    "user_id",
+    "channel",
+    "input_type",
+    "raw_text",
+    "normalized_text",
+    "parsed_transaction",
+    "confidence"
+  ],
+  "additionalProperties": false
+}

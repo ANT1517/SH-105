@@ -1,0 +1,13 @@
+{
+  "user_id": "meera_001",
+  "channel": "whatsapp",
+  "input_type": "text",
+  "raw_text": "I spent 200 on vegetables.",
+  "normalized_text": "I spent 200 on vegetables.",
+  "parsed_transaction": {
+    "type": "expense",
+    "amount": 200,
+    "category": "vegetables"
+  },
+  "confidence": 0.99
+}
