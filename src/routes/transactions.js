@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { checkDuplicate, recordTransactionInCache } = require('../services/deduplicationService');
-const { mapCategoryToPot } = require('../services/potCalculator');
+const { resolveTargetPot } = require('../services/potCalculator');
+const { resolveUserId } = require('../services/userResolver');
 const { getFinancialState, syncMemoryPotFromDb } = require('../services/financialStateStore');
 const { logEvent, removeAuditLogByEntityId, syncAuditLogToMemory } = require('../services/auditLogger');
 const { query, executeTransaction, isConnected } = require('../db/db');
@@ -99,20 +100,30 @@ router.post('/', async (req, res) => {
       }
     }
 
-    const trimmedUserId = user_id.trim();
+    const resolved = resolveUserId(user_id.trim());
+    if (resolved.error) {
+      return res.status(422).json({ error: resolved.error });
+    }
+    const trimmedUserId = resolved.userId;
     const txType = parsed_transaction.type.trim().toLowerCase();
     const category = parsed_transaction.category.trim();
     const confValue = confidence !== undefined && confidence !== null ? Number(confidence) : 1.0;
     const createdAt = new Date().toISOString();
 
     // ─── Transaction-type semantics (schema-documented types only) ────────────
-    // Supported: income (add), expense (subtract), transfer (add), commitment (subtract)
+    // Supported: income (add), expense (subtract), transfer (add), commitment (subtract),
+    // saving (add), business (add) -- the last two per contracts/normalized-input.schema.json
     // Source of truth: schema.sql tx_type column comment.
     const TX_TYPE_OPERATIONS = {
       income:     'add',       // Earnings deposited into a pot
       expense:    'subtract',  // Spending withdrawn from a pot
       transfer:   'add',       // Money moved into a pot (e.g. bank deposit, SHG contribution)
-      commitment: 'subtract'   // Committed outflow (e.g. chit installment, loan repayment)
+      commitment: 'subtract',  // Committed outflow (e.g. chit installment, loan repayment)
+      saving:     'add',       // Credits a savings pot (bank/shg/post_office; default bank)
+      // TODO(business-cost): STOPGAP. Credits the FULL amount to the business pot as if it were
+      // revenue, with no cost tracking. masterplan.pdf s5 specifies profit = revenue - cost updating
+      // the pot. Revisit once Dev-A's parser can supply (or prompt for) cost. See README "Known gaps".
+      business:   'add'
     };
 
     if (!Object.prototype.hasOwnProperty.call(TX_TYPE_OPERATIONS, txType)) {
@@ -198,7 +209,7 @@ router.post('/', async (req, res) => {
     }
 
     // ─── Step 2: Map category → pot ──────────────────────────────────────────
-    const targetPot = mapCategoryToPot(category);
+    const targetPot = resolveTargetPot(txType, category);
 
     const txRecord = {
       transaction_hash: dupCheck.hash,

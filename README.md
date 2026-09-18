@@ -53,7 +53,10 @@ Copy `.env.example` to `.env`:
 PORT=5000
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/saathi_db
 NODE_ENV=development
+PHONE_USER_MAP={"+919876543210":"meera_001"}
 ```
+`PHONE_USER_MAP` is required for the WhatsApp demo: Twilio sends the sender as `whatsapp:+91...`, and this maps
+phone numbers to existing user_ids. Unmapped phone numbers are rejected with HTTP 422.
 
 ### 3. Run Server
 ```bash
@@ -86,6 +89,14 @@ npm test
 | `GET` | `/api/audit-log` | Retrieves immutable audit trail | Compliance & Monitoring |
 
 ---
+
+## ⚠ Known gaps
+
+- **Business transactions record revenue, not profit.** `type: "business"` on `POST /api/transactions` credits the full
+  amount to the business pot with no cost tracking. masterplan.pdf s5 specifies profit = revenue - cost. Revisit once
+  Dev-A's parser can supply or prompt for cost (see `TODO(business-cost)` in `src/routes/transactions.js`).
+- **Real demo phone number not set.** `PHONE_USER_MAP` in `.env.example` holds a placeholder; set the real Twilio demo
+  number in your `.env`.
 
 ## 🛡 Features
 

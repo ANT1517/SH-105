@@ -37,9 +37,9 @@ describe('Integration: Financial State API (Part 3)', () => {
     expect(res1.body.pots).toEqual(res3.body.pots);
   });
 
-  it('handles custom user_id queries gracefully', async () => {
+  it('returns 404 for an unknown user_id instead of serving Meera state', async () => {
     const res = await request(app).get('/api/financial-state?user_id=new_user_999');
-    expect(res.status).toBe(200);
-    expect(res.body.user_id).toBeDefined();
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('unknown_user');
   });
 });

@@ -11,7 +11,8 @@ const CATEGORY_TO_POT_MAP = {
   'business': 'business',
   'sales': 'business',
   'shop': 'business',
-  'vegetables': 'business',
+  'stitching': 'business',   // Dev-A parser category
+  'pickles': 'business',     // Dev-A parser category
 
   // Bank
   'bank': 'bank',
@@ -44,7 +45,14 @@ const CATEGORY_TO_POT_MAP = {
   'daily cash': 'cash',
   'groceries': 'cash',
   'household': 'cash',
-  'personal': 'cash'
+  'personal': 'cash',
+  'electricity': 'cash',     // Dev-A parser category (household bill)
+  'vegetables': 'cash',      // Dev-A emits this for ordinary household spending, not business
+  'income': 'cash',          // Dev-A parser generic fallback categories
+  'expense': 'cash',
+
+  // Savings default (Dev-A emits the literal category "saving")
+  'saving': 'bank'
 };
 
 /**
@@ -69,6 +77,21 @@ function mapCategoryToPot(category) {
   }
 
   return 'cash';
+}
+
+const SAVINGS_POTS = ['bank', 'shg', 'post_office'];
+
+/**
+ * Picks the pot a transaction credits/debits.
+ *  - business: always the business pot (masterplan s5: sales flow into the business pot)
+ *  - saving:   the category's pot if it is a savings pot (bank/shg/post_office), else bank
+ *  - others:   category map (default cash)
+ */
+function resolveTargetPot(txType, category) {
+  if (txType === 'business') return 'business';
+  const pot = mapCategoryToPot(category);
+  if (txType === 'saving') return SAVINGS_POTS.includes(pot) ? pot : 'bank';
+  return pot;
 }
 
 /**
@@ -138,6 +161,7 @@ function formatUnifiedFinancialState(userData, pots, businessSummary, goal, rece
 
 module.exports = {
   mapCategoryToPot,
+  resolveTargetPot,
   calculateTotalBalance,
   formatUnifiedFinancialState,
   CATEGORY_TO_POT_MAP

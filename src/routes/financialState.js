@@ -26,6 +26,9 @@ router.get('/', async (req, res) => {
     }
 
     const state = await getFinancialState(userId);
+    if (!state) {
+      return res.status(404).json({ error: 'unknown_user', message: `No financial state exists for user_id "${userId}"` });
+    }
     
     await logEvent({
       user_id: userId,

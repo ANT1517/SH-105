@@ -66,6 +66,7 @@ function resetState() {
 
 /**
  * Retrieves the current financial state for a user.
+ * Returns null for unknown users (no pots in PostgreSQL and not the in-memory demo user).
  */
 async function getFinancialState(userId = 'meera_001') {
   if (isConnected()) {
@@ -112,6 +113,12 @@ async function getFinancialState(userId = 'meera_001') {
       }
       console.warn('[Store] Falling back to memory store:', err.message);
     }
+  }
+
+  // Memory store is single-user (Meera's demo state). Never serve it for anyone else:
+  // that hid unknown-user bugs. Callers treat null as "unknown user".
+  if (userId !== activeUserState.user_id) {
+    return null;
   }
 
   // Memory store fallback (only in non-strict / development mode)
