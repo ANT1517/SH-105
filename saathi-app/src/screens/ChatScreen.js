@@ -9,10 +9,12 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MEERA_FIXTURE, getFormattedTotal } from '../api/fixture';
+import { understandMessage } from '../services/nlpClient';
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
 const C = {
@@ -25,6 +27,14 @@ const C = {
   charcoal:  '#222222',
   white:     '#FFFFFF',
   border:    '#EFEEEB',
+  errorBg:   '#FDE8E8',
+  errorText: '#9B1C1C',
+  amberBg:   '#FEF3C7',
+  amberBorder: '#FDE68A',
+  amberText: '#92400E',
+  infoBg:    '#EFF6FF',
+  infoBorder:'#BFDBFE',
+  infoText:  '#1E40AF',
 };
 
 const { chatMessages: MSGS, educationGoal: EDU } = MEERA_FIXTURE;
@@ -67,18 +77,51 @@ export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState(INITIAL_MESSAGES);
   const [inputText, setInputText] = useState('');
+  const [status, setStatus] = useState('idle'); // 'idle' | 'thinking' | 'success' | 'error'
+  const [errorMessage, setErrorMessage] = useState(null);
 
-  const handleSend = () => {
-    if (!inputText.trim()) return;
-    const newMessage = {
-      id: Date.now().toString(),
+  const handleSend = async () => {
+    if (!inputText.trim() || status === 'thinking') return;
+
+    const userText = inputText.trim();
+    const userTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const userMessageId = Date.now().toString();
+
+    const newUserMessage = {
+      id: userMessageId,
       sender: 'user',
       type: 'text',
-      text: inputText.trim(),
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      text: userText,
+      timestamp: userTimestamp,
     };
-    setMessages((prev) => [...prev, newMessage]);
+
+    // 1. Add user's message immediately & 2. clear input & 3. show thinking state
+    setMessages((prev) => [...prev, newUserMessage]);
     setInputText('');
+    setStatus('thinking');
+    setErrorMessage(null);
+
+    try {
+      // 4. Send message to real NLP backend & 5. Wait for REAL NLP response
+      const nlpResult = await understandMessage(userText);
+
+      // 6. Add returned reply_text as Saathi's message with real metadata
+      const saathiMessage = {
+        id: (Date.now() + 1).toString(),
+        sender: 'saathi',
+        type: 'text',
+        text: nlpResult.reply_text,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        nlpMeta: nlpResult, // store real metadata
+      };
+
+      setMessages((prev) => [...prev, saathiMessage]);
+      setStatus('success');
+    } catch (err) {
+      console.warn('[ChatScreen] NLP request failed:', err.message);
+      setStatus('error');
+      setErrorMessage('Saathi could not connect right now. Please try again.');
+    }
   };
 
   const renderMessageItem = ({ item, index }) => {
@@ -209,6 +252,134 @@ export default function ChatScreen() {
             </View>
           </View>
         )}
+
+        {/* ── Compact NLP Understanding Card (for real NLP replies) ─── */}
+        {!isUser && item.nlpMeta && (
+          <View style={styles.understandingCardWrap}>
+            {/* Confidence Tier 1: Normal Understanding (>= 0.85) */}
+            {item.nlpMeta.confidence >= 0.85 && (
+              <View style={styles.understandingCard}>
+                <View style={styles.understandingHeader}>
+                  <Text style={styles.understandingTitle}>🧠 Saathi understood:</Text>
+                  <View style={styles.confidenceBadge}>
+                    <Text style={styles.confidenceText}>
+                      {Math.round((item.nlpMeta.confidence || 0) * 100)}%
+                    </Text>
+                  </View>
+                </View>
+
+                {item.nlpMeta.transaction ? (
+                  <View style={styles.understandingDetailsRow}>
+                    <Text style={styles.understandingTag}>
+                      {item.nlpMeta.transaction.type ? item.nlpMeta.transaction.type.charAt(0).toUpperCase() + item.nlpMeta.transaction.type.slice(1) : 'Transaction'}
+                    </Text>
+                    {item.nlpMeta.transaction.amount != null && (
+                      <>
+                        <Text style={styles.understandingBullet}>•</Text>
+                        <Text style={styles.understandingTagBold}>₹{item.nlpMeta.transaction.amount}</Text>
+                      </>
+                    )}
+                    {item.nlpMeta.transaction.category && (
+                      <>
+                        <Text style={styles.understandingBullet}>•</Text>
+                        <Text style={styles.understandingTag}>
+                          {item.nlpMeta.transaction.category.charAt(0).toUpperCase() + item.nlpMeta.transaction.category.slice(1)}
+                        </Text>
+                      </>
+                    )}
+                  </View>
+                ) : (
+                  <View style={styles.understandingDetailsRow}>
+                    <Text style={styles.understandingTag}>
+                      {item.nlpMeta.intent ? item.nlpMeta.intent.replace(/_/g, ' ') : 'Query'}
+                    </Text>
+                  </View>
+                )}
+
+                <View style={styles.understandingMetaRow}>
+                  <Text style={styles.understandingMetaText}>
+                    Language: {
+                      item.nlpMeta.language === 'en' ? 'English' :
+                      item.nlpMeta.language === 'hi' ? 'Hindi' :
+                      item.nlpMeta.language === 'te' ? 'Telugu' :
+                      item.nlpMeta.language === 'mixed' ? 'Mixed' : item.nlpMeta.language
+                    }
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Confidence Tier 2: Confirmation Needed (0.60 to 0.84) */}
+            {item.nlpMeta.confidence >= 0.60 && item.nlpMeta.confidence < 0.85 && (
+              <View style={styles.confirmingCard}>
+                <View style={styles.understandingHeader}>
+                  <Text style={styles.confirmingTitle}>🤔 Saathi wants to confirm:</Text>
+                  <View style={styles.confirmingBadge}>
+                    <Text style={styles.confirmingBadgeText}>
+                      {Math.round((item.nlpMeta.confidence || 0) * 100)}%
+                    </Text>
+                  </View>
+                </View>
+
+                {item.nlpMeta.transaction ? (
+                  <View style={styles.understandingDetailsRow}>
+                    <Text style={styles.confirmingTag}>
+                      {item.nlpMeta.transaction.type ? item.nlpMeta.transaction.type.charAt(0).toUpperCase() + item.nlpMeta.transaction.type.slice(1) : 'Transaction'}
+                    </Text>
+                    {item.nlpMeta.transaction.amount != null && (
+                      <>
+                        <Text style={styles.understandingBullet}>•</Text>
+                        <Text style={styles.confirmingTagBold}>₹{item.nlpMeta.transaction.amount}</Text>
+                      </>
+                    )}
+                    {item.nlpMeta.transaction.category && (
+                      <>
+                        <Text style={styles.understandingBullet}>•</Text>
+                        <Text style={styles.confirmingTag}>
+                          {item.nlpMeta.transaction.category.charAt(0).toUpperCase() + item.nlpMeta.transaction.category.slice(1)}
+                        </Text>
+                      </>
+                    )}
+                  </View>
+                ) : (
+                  <View style={styles.understandingDetailsRow}>
+                    <Text style={styles.confirmingTag}>
+                      {item.nlpMeta.intent ? item.nlpMeta.intent.replace(/_/g, ' ') : 'Query'}
+                    </Text>
+                  </View>
+                )}
+
+                <View style={styles.understandingMetaRow}>
+                  <Text style={styles.confirmingMetaText}>
+                    Language: {
+                      item.nlpMeta.language === 'en' ? 'English' :
+                      item.nlpMeta.language === 'hi' ? 'Hindi' :
+                      item.nlpMeta.language === 'te' ? 'Telugu' :
+                      item.nlpMeta.language === 'mixed' ? 'Mixed' : item.nlpMeta.language
+                    } • Tap or reply to adjust
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Confidence Tier 3: Clarification Needed (< 0.60) */}
+            {item.nlpMeta.confidence < 0.60 && (
+              <View style={styles.clarifyCard}>
+                <View style={styles.understandingHeader}>
+                  <Text style={styles.clarifyTitle}>💬 Clarification needed:</Text>
+                  <View style={styles.clarifyBadge}>
+                    <Text style={styles.clarifyBadgeText}>
+                      {Math.round((item.nlpMeta.confidence || 0) * 100)}%
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.clarifySubtext}>
+                  Please specify the exact amount or clarify your request.
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
       </View>
     );
   };
@@ -241,6 +412,27 @@ export default function ChatScreen() {
           renderItem={renderMessageItem}
           contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 24 }]}
           showsVerticalScrollIndicator={false}
+          ListFooterComponent={
+            <>
+              {status === 'thinking' && (
+                <View style={styles.thinkingContainer}>
+                  <View style={styles.thinkingBubble}>
+                    <ActivityIndicator size="small" color={C.forestInk} />
+                    <Text style={styles.thinkingText}>Saathi is thinking...</Text>
+                  </View>
+                </View>
+              )}
+
+              {status === 'error' && errorMessage && (
+                <View style={styles.errorContainer}>
+                  <View style={styles.errorBubble}>
+                    <Text style={styles.errorIcon}>⚠️</Text>
+                    <Text style={styles.errorText}>{errorMessage}</Text>
+                  </View>
+                </View>
+              )}
+            </>
+          }
         />
 
         {/* ── BOTTOM INPUT BAR ─────────────────────────────────────────── */}
@@ -352,4 +544,186 @@ const styles = StyleSheet.create({
   textInput:    { flex: 1, fontSize: 14, fontWeight: '500', color: C.charcoal, paddingVertical: 8 },
   actionButton: { width: 40, height: 40, borderRadius: 999, backgroundColor: C.forestInk, justifyContent: 'center', alignItems: 'center' },
   actionButtonIcon: { fontSize: 16, color: C.cream },
+
+  // Thinking State
+  thinkingContainer: { marginVertical: 6, alignItems: 'flex-start' },
+  thinkingBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.keylime,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderBottomLeftRadius: 2,
+    gap: 8,
+  },
+  thinkingText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: C.forestInk,
+  },
+
+  // Error State
+  errorContainer: { marginVertical: 6, alignItems: 'center' },
+  errorBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.errorBg,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    gap: 8,
+    maxWidth: '90%',
+  },
+  errorIcon: { fontSize: 14 },
+  errorText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: C.errorText,
+    flexShrink: 1,
+  },
+
+  // Compact NLP Understanding Card
+  understandingCardWrap: { marginTop: 4, marginBottom: 8, maxWidth: '82%' },
+  understandingCard: {
+    backgroundColor: C.white,
+    borderWidth: 1,
+    borderColor: C.sage,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  understandingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  understandingTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: C.forestInk,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  confidenceBadge: {
+    backgroundColor: C.keylime,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  confidenceText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: C.forestInk,
+  },
+  understandingDetailsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  understandingTag: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: C.charcoal,
+  },
+  understandingTagBold: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.forestInk,
+  },
+  understandingBullet: {
+    fontSize: 10,
+    color: '#888888',
+  },
+  understandingMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  understandingMetaText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#666666',
+  },
+
+  // Confirmation Card (Confidence 0.60 - 0.84)
+  confirmingCard: {
+    backgroundColor: C.amberBg,
+    borderWidth: 1,
+    borderColor: C.amberBorder,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  confirmingTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: C.amberText,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  confirmingBadge: {
+    backgroundColor: '#FDE68A',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  confirmingBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: C.amberText,
+  },
+  confirmingTag: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#78350F',
+  },
+  confirmingTagBold: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#78350F',
+  },
+  confirmingMetaText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#92400E',
+  },
+
+  // Clarification Card (Confidence < 0.60)
+  clarifyCard: {
+    backgroundColor: C.infoBg,
+    borderWidth: 1,
+    borderColor: C.infoBorder,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  clarifyTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: C.infoText,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  clarifyBadge: {
+    backgroundColor: '#DBEAFE',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  clarifyBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: C.infoText,
+  },
+  clarifySubtext: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#1E3A8A',
+    lineHeight: 16,
+  },
 });
