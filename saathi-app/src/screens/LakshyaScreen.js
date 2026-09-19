@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import FormModal from '../components/FormModal';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 import { theme } from '../theme';
 import { createGoal, getGoals } from '../services/personBClient.js';
 import { buildGoalViewModel } from '../services/viewModels.js';
@@ -11,6 +12,7 @@ import { useLiveData } from '../hooks/useLiveData';
 // offers a retry, rather than showing a made-up goal.
 export default function LakshyaScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const [formOpen, setFormOpen] = useState(false);
   const { status, data, error, reload } = useLiveData(getGoals);
   const goal = data ? buildGoalViewModel(data) : null;
@@ -18,7 +20,7 @@ export default function LakshyaScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.headerBar}>
-        <Text style={styles.headerTitle}>Lakshya • Goals</Text>
+        <Text style={styles.headerTitle}>{t('lakshya.headerTitle')}</Text>
       </View>
       <ScrollView
         style={styles.scrollView}
@@ -28,16 +30,16 @@ export default function LakshyaScreen() {
         {status === 'loading' && (
           <View style={styles.stateBox}>
             <ActivityIndicator size="large" color={theme.colors.forestInk} />
-            <Text style={styles.stateText}>Loading your goal...</Text>
+            <Text style={styles.stateText}>{t('lakshya.loadingGoal')}</Text>
           </View>
         )}
 
         {status === 'error' && (
           <View style={styles.stateBox} accessibilityRole="alert">
-            <Text style={styles.stateTitle}>Couldn't load your goal</Text>
-            <Text style={styles.stateText}>{error && error.message ? error.message : 'Please check your connection.'}</Text>
+            <Text style={styles.stateTitle}>{t('lakshya.couldNotLoad')}</Text>
+            <Text style={styles.stateText}>{error && error.message ? error.message : t('lakshya.checkConnection')}</Text>
             <TouchableOpacity style={styles.retryButton} onPress={reload} activeOpacity={0.8}>
-              <Text style={styles.retryButtonText}>Try again</Text>
+              <Text style={styles.retryButtonText}>{t('common.tryAgain')}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -46,14 +48,14 @@ export default function LakshyaScreen() {
           <View style={styles.goalCard}>
             <View style={styles.goalCardHeader}>
               <View style={styles.goalBadge}>
-                <Text style={styles.goalBadgeText}>Goal</Text>
+                <Text style={styles.goalBadgeText}>{t('lakshya.goalBadge')}</Text>
               </View>
-              <Text style={styles.goalPercentText}>{goal.pct}% done</Text>
+              <Text style={styles.goalPercentText}>{goal.pct}% {t('lakshya.done')}</Text>
             </View>
 
             <Text style={styles.goalMainHeading}>{goal.name}</Text>
             <Text style={styles.goalTargetNotice}>
-              {goal.savedText} saved of {goal.targetText} target
+              {t('lakshya.savedOf', { saved: goal.savedText, target: goal.targetText })}
             </Text>
 
             {/* Progress Bar */}
@@ -63,43 +65,43 @@ export default function LakshyaScreen() {
 
             <View style={styles.metricsRow}>
               <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>Saved</Text>
+                <Text style={styles.metricLabel}>{t('lakshya.saved')}</Text>
                 <Text style={styles.metricValue}>{goal.savedText}</Text>
               </View>
               <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>Target</Text>
+                <Text style={styles.metricLabel}>{t('lakshya.target')}</Text>
                 <Text style={styles.metricValue}>{goal.targetText}</Text>
               </View>
               <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>To go</Text>
+                <Text style={styles.metricLabel}>{t('lakshya.toGo')}</Text>
                 <Text style={styles.metricValue}>{goal.remainingText}</Text>
               </View>
             </View>
 
             <Text style={styles.reassuranceText}>
-              {goal.reached ? 'You have reached this goal. Congratulations!' : `${goal.remainingText} still to go for this goal.`}
+              {goal.reached ? t('lakshya.goalReached') : t('lakshya.stillToGo', { remaining: goal.remainingText })}
             </Text>
           </View>
         )}
 
         <TouchableOpacity style={styles.retryButton} onPress={() => setFormOpen(true)} activeOpacity={0.8}>
-          <Text style={styles.retryButtonText}>{goal ? 'Naya Goal — Set a New Goal' : '+ Goal — Add a Goal'}</Text>
+          <Text style={styles.retryButtonText}>{goal ? t('lakshya.setNewGoal') : t('lakshya.addGoal')}</Text>
         </TouchableOpacity>
       </ScrollView>
 
       <FormModal
         visible={formOpen}
-        title="Naya Goal — New Goal"
+        title={t('lakshya.modalTitle')}
         fields={[
-          { key: 'name', label: 'Goal name (e.g. Education)' },
-          { key: 'target', label: 'Target amount (₹)', keyboardType: 'numeric' },
-          { key: 'saved', label: 'Already saved (₹, optional)', keyboardType: 'numeric' },
+          { key: 'name', label: t('lakshya.fieldGoalName') },
+          { key: 'target', label: t('lakshya.fieldTarget'), keyboardType: 'numeric' },
+          { key: 'saved', label: t('lakshya.fieldSaved'), keyboardType: 'numeric' },
         ]}
         onClose={() => setFormOpen(false)}
         onSubmit={async (v) => {
-          if (!(v.name || '').trim()) throw new Error('Please name the goal.');
+          if (!(v.name || '').trim()) throw new Error(t('lakshya.errorName'));
           const target = Number(v.target);
-          if (!(target > 0)) throw new Error('Target must be more than zero.');
+          if (!(target > 0)) throw new Error(t('lakshya.errorTarget'));
           await createGoal({ name: v.name.trim(), target_amount: target, saved_amount: Number(v.saved) || 0 });
           await reload();
         }}

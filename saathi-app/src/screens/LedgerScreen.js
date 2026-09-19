@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 import { MEERA_FIXTURE } from '../api/fixture';
 import { addLedgerEntry, getLedger } from '../services/personBClient.js';
 import { buildLedgerViewModel, fixtureToLedger } from '../services/viewModels.js';
@@ -41,6 +42,7 @@ const offlineSample = () => fixtureToLedger(MEERA_FIXTURE);
 export default function LedgerScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
   const [formOpen, setFormOpen] = useState(false);
   const [prefill, setPrefill] = useState(null);
   const [scanning, setScanning] = useState(false);
@@ -49,7 +51,7 @@ export default function LedgerScreen() {
   const scanBill = async (camera) => {
     try {
       const perm = camera ? await ImagePicker.requestCameraPermissionsAsync() : { granted: true };
-      if (!perm.granted) { Alert.alert('Camera permission is needed to scan a bill.'); return; }
+      if (!perm.granted) { Alert.alert(t('ledger.cameraPermNeeded')); return; }
       const pick = camera ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
       const res = await pick({ mediaTypes: ['images'], quality: 0.8 });
       if (res.canceled) return;
@@ -57,13 +59,17 @@ export default function LedgerScreen() {
       setScanning(true);
       const out = await scanReceipt({ uri: asset.uri, fileName: asset.fileName, mimeType: asset.mimeType || 'image/jpeg' });
       setPrefill({
-        activity: 'Bill',
+        activity: t('ledger.billActivity', { defaultValue: 'Bill' }),
         cost: out.amount ? String(out.amount) : '',
-        notes: `Scanned bill${out.date ? ` (${out.date})` : ''}${out.amount ? '' : ' - amount not found, please enter it'}`,
+        notes: t('ledger.billNotes', {
+          datePart: out.date ? t('ledger.billNotesDate', { date: out.date, defaultValue: ` (${out.date})` }) : '',
+          amountNote: out.amount ? '' : t('ledger.billNotesNoAmount', { defaultValue: ' - amount not found, please enter it' }),
+          defaultValue: `Scanned bill${out.date ? ` (${out.date})` : ''}${out.amount ? '' : ' - amount not found, please enter it'}`,
+        }),
       });
       setFormOpen(true);
     } catch (e) {
-      Alert.alert('Could not scan the bill', e && e.message ? e.message : 'Try again.');
+      Alert.alert(t('ledger.scanBillFailed'), e && e.message ? e.message : t('common.tryAgain'));
     } finally {
       setScanning(false);
     }
@@ -76,13 +82,13 @@ export default function LedgerScreen() {
         <StatusBar barStyle="dark-content" backgroundColor={C.cream} />
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color={C.forestInk} />
-          <Text style={styles.loadingText}>Loading your ledger...</Text>
+          <Text style={styles.loadingText}>{t('ledger.loadingLedger')}</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  const vm = buildLedgerViewModel(ledger);
+  const vm = buildLedgerViewModel(ledger, new Date(), t);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -91,8 +97,8 @@ export default function LedgerScreen() {
       {/* ── HEADER ─────────────────────────────────────────────────────── */}
       <View style={styles.headerBar}>
         <View>
-          <Text style={styles.headerEyebrow}>VYAPAR KHATA</Text>
-          <Text style={styles.headerTitle}>Business Ledger</Text>
+          <Text style={styles.headerEyebrow}>{t('ledger.headerEyebrow')}</Text>
+          <Text style={styles.headerTitle}>{t('ledger.headerTitle')}</Text>
         </View>
       </View>
 
@@ -120,15 +126,15 @@ export default function LedgerScreen() {
             {/* Figures Row */}
             <View style={styles.figuresRow}>
               <View style={styles.figureItem}>
-                <Text style={styles.figureLabel}>Kamai / Revenue</Text>
+                <Text style={styles.figureLabel}>{t('ledger.revenue')}</Text>
                 <Text style={styles.figureValue}>{vm.revenue}</Text>
               </View>
               <View style={styles.figureItem}>
-                <Text style={styles.figureLabel}>Kharcha / Cost</Text>
+                <Text style={styles.figureLabel}>{t('ledger.cost')}</Text>
                 <Text style={styles.figureValue}>{vm.cost}</Text>
               </View>
               <View style={[styles.figureItem, styles.profitHighlightItem]}>
-                <Text style={styles.profitLabel}>Munafa / Profit</Text>
+                <Text style={styles.profitLabel}>{t('ledger.profit')}</Text>
                 <Text style={styles.profitValue}>{vm.profit}{vm.profitNum > 0 ? ' ↑' : ''}</Text>
               </View>
             </View>
@@ -136,7 +142,7 @@ export default function LedgerScreen() {
             {/* Reassurance text */}
             {vm.profitNum > 0 && (
               <Text style={styles.reassuranceText}>
-                Yeh kamai aapke Business pot mein gayi. — This income went into your Business pot.
+                {t('ledger.reassurance')}
               </Text>
             )}
 
@@ -147,11 +153,11 @@ export default function LedgerScreen() {
           {/* ── 3. RECENT ENTRIES ────────────────────────────────────────── */}
           <View style={styles.entriesSection}>
             <View style={styles.entriesSectionHeader}>
-              <Text style={styles.sectionTitle}>Haal ki Entries — Recent Entries</Text>
+              <Text style={styles.sectionTitle}>{t('ledger.recentEntries')}</Text>
             </View>
 
             {!vm.hasEntries && (
-              <Text style={styles.entryDate}>No business entries yet. Tell Saathi about a sale in Chat to add one.</Text>
+              <Text style={styles.entryDate}>{t('ledger.noEntries')}</Text>
             )}
 
             <View style={styles.entriesList}>
@@ -177,29 +183,29 @@ export default function LedgerScreen() {
         <View style={[styles.bottomActionContainer, { bottom: insets.bottom + 16 }]}>
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
             <TouchableOpacity style={[styles.secondaryButton, { flex: 1, backgroundColor: C.cream }]} disabled={scanning} onPress={() => scanBill(true)}>
-              <Text style={styles.secondaryButtonText}>{scanning ? 'Reading bill...' : '📷 Scan bill'}</Text>
+              <Text style={styles.secondaryButtonText}>{scanning ? t('ledger.readingBill') : t('ledger.scanBill')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.secondaryButton, { flex: 1, backgroundColor: C.cream }]} disabled={scanning} onPress={() => scanBill(false)}>
-              <Text style={styles.secondaryButtonText}>🖼 From gallery</Text>
+              <Text style={styles.secondaryButtonText}>{t('ledger.fromGallery')}</Text>
             </TouchableOpacity>
           </View>
           <TouchableOpacity style={styles.primaryActionButton} activeOpacity={0.8} onPress={() => { setPrefill(null); setFormOpen(true); }}>
-            <Text style={styles.primaryActionButtonText}>+ Nayi Entry — Add New Entry</Text>
+            <Text style={styles.primaryActionButtonText}>{t('ledger.addNewEntry')}</Text>
           </TouchableOpacity>
         </View>
         <FormModal
           visible={formOpen}
           initialValues={prefill}
-          title="Nayi Entry — New Entry"
+          title={t('ledger.modalTitle')}
           fields={[
-            { key: 'activity', label: 'What was it? (e.g. tailoring, pickles)' },
-            { key: 'revenue', label: 'Kamai / Revenue (₹)', keyboardType: 'numeric' },
-            { key: 'cost', label: 'Kharcha / Cost (₹)', keyboardType: 'numeric' },
-            { key: 'notes', label: 'Note (optional)' },
+            { key: 'activity', label: t('ledger.fieldActivity') },
+            { key: 'revenue', label: t('ledger.fieldRevenue'), keyboardType: 'numeric' },
+            { key: 'cost', label: t('ledger.fieldCost'), keyboardType: 'numeric' },
+            { key: 'notes', label: t('ledger.fieldNotes') },
           ]}
           onClose={() => setFormOpen(false)}
           onSubmit={async (v) => {
-            if (!(v.activity || '').trim()) throw new Error('Please say what the entry is for.');
+            if (!(v.activity || '').trim()) throw new Error(t('ledger.errorActivity'));
             await addLedgerEntry({ activity: v.activity.trim(), revenue: v.revenue || '0', cost: v.cost || '0', notes: v.notes || '' });
             await reload();
           }}

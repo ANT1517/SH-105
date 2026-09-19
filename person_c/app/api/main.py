@@ -33,6 +33,7 @@ from ..integration.person_a import PersonAIntegrationRequest
 from ..integration.person_b import PersonBClient, UnknownUserError
 from ..contracts.input import GuidanceRequest
 from ..contracts.simulator import SimulatorInput
+from ..localization.language import get_fallback
 
 # Initialize Chroma and service (in production this would be more robust)
 _chroma_client = chromadb.EphemeralClient()
@@ -99,7 +100,10 @@ async def person_a_integration(
 ):
     """
     Real Integration API that coordinates fetching B's financial state and routing to the right internal C service.
+    The `language` field in the request controls the output language of all LLM responses.
     """
+    language = request.language  # validated Literal["en","te","hi","kn"], defaults "en"
+
     def audited(response: PersonCResponse) -> PersonCResponse:
         # Fire-and-forget (runs after the response is sent); only for successfully produced guidance.
         background_tasks.add_task(
@@ -111,7 +115,7 @@ async def person_a_integration(
 
     if request.request_mode == "education":
         # Education mode does not require financial state
-        return audited(education_service.get_guidance(request.question or ""))
+        return audited(education_service.get_guidance(request.question or "", language=language))
         
     # For personalized and simulator modes, we need the financial state from Person B
     try:
@@ -119,7 +123,7 @@ async def person_a_integration(
     except UnknownUserError:
         # Not an outage: retrying won't help, so don't tell the user to "try again later".
         return PersonCResponse(
-            response_text="We couldn't find a Saathi account for you yet, so we can't give personalised guidance. Please check with support or record a first transaction to get started.",
+            response_text=get_fallback(language, "no_account"),
             source_class="system",
             mode=request.request_mode,
             disclaimer=True
@@ -128,7 +132,7 @@ async def person_a_integration(
     if not financial_state:
         # Graceful failure if Person B is down or fails
         return PersonCResponse(
-            response_text="We are currently unable to access your financial information. Please try again later.",
+            response_text=get_fallback(language, "no_financial_info"),
             source_class="system",
             mode=request.request_mode,
             disclaimer=True
@@ -145,7 +149,8 @@ async def person_a_integration(
             goal=financial_state.goal,
             question=request.question,
             request_mode="personalized",
-            literacy_tier=request.literacy_tier
+            literacy_tier=request.literacy_tier,
+            language=language
         )
         return audited(personalization_service.get_guidance(guidance_req))
         
@@ -153,7 +158,7 @@ async def person_a_integration(
         # Ensure we have goal data for the simulator from Person B
         if not financial_state.goal:
             return PersonCResponse(
-                response_text="Goal information is missing from your financial state.",
+                response_text=get_fallback(language, "goal_missing"),
                 source_class="system",
                 mode="simulator",
                 disclaimer=True
@@ -166,7 +171,8 @@ async def person_a_integration(
             monthly_contribution=None, # In real use, maybe pass from request
             timeframe_months=None,
             literacy_tier=request.literacy_tier,
-            question=request.question
+            question=request.question,
+            language=language
         )
         return audited(simulator_service.get_simulation(sim_input))
 
@@ -215,10 +221,12 @@ async def get_guidance(
     personalization_service: PersonalizationService = Depends(get_personalization_service),
     person_b_client: PersonBClient = Depends(get_person_b_client)
 ):
+    language = request.language  # validated, defaults "en"
+
     if request.request_mode == "education":
         if not request.question:
             raise HTTPException(status_code=400, detail="Question is required for education mode")
-        response = education_service.get_guidance(request.question)
+        response = education_service.get_guidance(request.question, language=language)
 
     elif request.request_mode == "personalized":
         if not request.question:

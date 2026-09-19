@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Literal
 
 class BusinessLastEntry(BaseModel):
     revenue: float
@@ -29,3 +29,5 @@ class GuidanceRequest(FinancialState):
     question: Optional[str] = None
     request_mode: Optional[str] = None
     literacy_tier: Optional[int] = None
+    # Selected UI language (en/te/hi/kn). Controls the language of the LLM response.
+    language: Literal["en", "te", "hi", "kn"] = "en"

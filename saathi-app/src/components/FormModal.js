@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Text, TextInput, TouchableOpacity, View, StyleSheet } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Small bottom-sheet form. fields: [{ key, label, keyboardType?, placeholder? }]; onSubmit(values) may throw,
  * in which case its message is shown and the sheet stays open.
  */
-export default function FormModal({ visible, title, fields, initialValues, submitLabel = 'Save', onSubmit, onClose }) {
+export default function FormModal({ visible, title, fields, initialValues, submitLabel, onSubmit, onClose }) {
+  const { t } = useTranslation();
+  const resolvedSubmitLabel = submitLabel || t('common.save');
   const [values, setValues] = useState({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -47,10 +50,10 @@ export default function FormModal({ visible, title, fields, initialValues, submi
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <View style={styles.row}>
             <TouchableOpacity style={[styles.btn, styles.cancel]} onPress={close} disabled={busy}>
-              <Text style={styles.cancelText}>Cancel</Text>
+              <Text style={styles.cancelText}>{t('common.cancel')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.btn, styles.save]} onPress={submit} disabled={busy}>
-              <Text style={styles.saveText}>{busy ? 'Saving...' : submitLabel}</Text>
+              <Text style={styles.saveText}>{busy ? t('common.saving') : resolvedSubmitLabel}</Text>
             </TouchableOpacity>
           </View>
         </View>

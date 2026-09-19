@@ -2,6 +2,7 @@ from typing import Optional
 from app.rag.retrieval import Retriever
 from app.education.llm import LLMInterface
 from app.contracts.output import PersonCResponse
+from app.localization.language import get_fallback
 
 # Example system prompt for LLM
 EDUCATION_SYSTEM_PROMPT = """
@@ -20,7 +21,7 @@ class EducationService:
         self.retriever = retriever
         self.llm = llm
         
-    def get_guidance(self, question: str) -> PersonCResponse:
+    def get_guidance(self, question: str, language: str = "en") -> PersonCResponse:
         # Retrieve context
         contexts = self.retriever.retrieve(question, top_k=1)
         
@@ -31,11 +32,11 @@ class EducationService:
 
         # In real implementation we'd pass the EDUCATION_SYSTEM_PROMPT alongside context to the LLM.
         try:
-            llm_text = self.llm.generate_response(question, contexts)
+            llm_text = self.llm.generate_response(question, contexts, language=language)
         except Exception as e:
             # Safe fallback on LLM failure
             return PersonCResponse(
-                response_text="Sorry, I am currently unable to process your request.",
+                response_text=get_fallback(language, "cannot_process"),
                 source_class="system",
                 mode="education",
                 disclaimer=True
@@ -44,7 +45,7 @@ class EducationService:
         if not llm_text:
             # Handle empty/malformed LLM output safely
             return PersonCResponse(
-                response_text="Sorry, I encountered an error generating a response.",
+                response_text=get_fallback(language, "error_response"),
                 source_class="system",
                 mode="education",
                 disclaimer=True

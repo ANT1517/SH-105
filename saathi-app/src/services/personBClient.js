@@ -23,28 +23,54 @@ export async function getGoals(userId = getUserId()) {
 
 const money = (n) => `₹${Number(n).toLocaleString('en-IN')}`;
 
-/** The confirmation Meera sees, built ONLY from what Person B says it recorded. */
-export function describeRecorded(body) {
+/**
+ * The confirmation Meera sees, built ONLY from what Person B says it recorded.
+ * If a translator `t` is provided the string is fully localized; otherwise English fallback is used.
+ * Financial values (amount, category, pot name) are NEVER translated — only the surrounding phrase.
+ *
+ * @param {object} body  – Person B's POST /api/transactions response body
+ * @param {Function} [t] – i18next translator (optional)
+ */
+export function describeRecorded(body, t) {
   const tx = body.transaction;
-  return `Recorded: ${tx.tx_type} of ${money(tx.amount)} (${tx.category}) in your ${body.pot_affected} pot.`;
+  if (!t) {
+    // English fallback (used in unit tests or if called before i18next is ready)
+    return `Recorded: ${tx.tx_type} of ${money(tx.amount)} (${tx.category}) in your ${body.pot_affected} pot.`;
+  }
+  const typeKey = `transactions.type.${tx.tx_type}`;
+  const localizedType = t(typeKey, { defaultValue: tx.tx_type });
+  const potKey = `pots.${body.pot_affected}.name`;
+  const localizedPot = t(potKey, { defaultValue: body.pot_affected });
+  return t('transactions.recorded', {
+    amount: Number(tx.amount).toLocaleString('en-IN'),
+    type: localizedType,
+    category: tx.category,
+    pot: localizedPot,
+    defaultValue: `Recorded: ${localizedType} of ${money(tx.amount)} (${tx.category}) in your ${localizedPot} pot.`,
+  });
 }
 
 /**
  * POST /api/transactions with a normalized-input object (contracts/normalized-input.schema.json shape).
+ * @param {object} normalizedInput – NLP output (tx_type, amount, category, etc.)
+ * @param {object} [opts]          – { t: Function } optional translator for localized confirmation
  * @returns {Promise<{status: 'recorded'|'duplicate', confirmation: string, response: object}>}
  * Rejections (400 validation / insufficient funds, 404/422 unknown user or phone) throw an ApiError whose
  * message is Person B's own error text.
  */
-export async function recordTransaction(normalizedInput) {
+export async function recordTransaction(normalizedInput, { t } = {}) {
   const { status, body } = await requestJson(`${getPersonBApiUrl()}/api/transactions`, {
     method: 'POST',
     body: normalizedInput,
     okStatuses: [409],
   });
   if (status === 409) {
-    return { status: 'duplicate', confirmation: 'I already recorded this one, so I did not add it again.', response: body };
+    const dupMsg = t
+      ? t('transactions.duplicate', { defaultValue: 'Already recorded this one — not added again.' })
+      : 'I already recorded this one, so I did not add it again.';
+    return { status: 'duplicate', confirmation: dupMsg, response: body };
   }
-  return { status: 'recorded', confirmation: describeRecorded(body), response: body };
+  return { status: 'recorded', confirmation: describeRecorded(body, t), response: body };
 }
 
 /** POST /api/ledger: a manual Khata entry. Person B credits the business pot with any profit. */

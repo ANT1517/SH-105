@@ -5,6 +5,7 @@ from app.contracts.output import PersonCResponse
 from app.contracts.input import GuidanceRequest
 from app.calculator.deterministic import calculate_financial_facts
 from app.literacy.prompts import get_literacy_instructions
+from app.localization.language import get_fallback
 
 class PersonalizationService:
     def __init__(self, retriever: Retriever, llm: LLMInterface):
@@ -13,6 +14,7 @@ class PersonalizationService:
         
     def get_guidance(self, request: GuidanceRequest) -> PersonCResponse:
         question = request.question or ""
+        language = request.language if hasattr(request, "language") else "en"
         
         # 1. Retrieve context via RAG
         contexts = self.retriever.retrieve(question, top_k=1)
@@ -24,7 +26,7 @@ class PersonalizationService:
         tier = request.literacy_tier if request.literacy_tier else 2
         instructions = get_literacy_instructions(tier)
         
-        # 4. Generate response via LLM
+        # 4. Generate response via LLM (language injected into system prompt inside llm.py)
         state_dict = request.model_dump()
         facts_dict = facts.model_dump()
         
@@ -34,11 +36,12 @@ class PersonalizationService:
                 contexts=contexts,
                 financial_state=state_dict,
                 calculated_facts=facts_dict,
-                literacy_instructions=instructions
+                literacy_instructions=instructions,
+                language=language
             )
         except Exception:
             return PersonCResponse(
-                response_text="Sorry, I am currently unable to process your request.",
+                response_text=get_fallback(language, "cannot_process"),
                 source_class="system",
                 mode="personalized",
                 disclaimer=True
@@ -46,7 +49,7 @@ class PersonalizationService:
             
         if not llm_text:
             return PersonCResponse(
-                response_text="Sorry, I encountered an error generating a response.",
+                response_text=get_fallback(language, "error_response"),
                 source_class="system",
                 mode="personalized",
                 disclaimer=True

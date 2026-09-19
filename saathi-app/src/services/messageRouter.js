@@ -10,6 +10,11 @@
  *   3. A transaction with an amount and enough confidence is POSTed to Person B /api/transactions and the reply
  *      is Person B's confirmation. An incomplete one gets a clarification question instead (nothing recorded).
  *   4. Everything else (questions, goals, education, chit-chat) goes to Person C guidance.
+ *
+ * Localization:
+ *   `language` (en/te/hi/kn) is passed through to Person C so LLM replies are in the user's selected UI language.
+ *   `t` (i18next translator) is used to build localized failure/clarification strings on the client.
+ *   The NLP service detects the INPUT language independently — never tied to the UI language preference.
  */
 import { getUserId } from './apiConfig.js';
 import { looksSuspicious } from './safetyTrigger.js';
@@ -21,9 +26,10 @@ import { getGuidance, checkSafety } from './personCClient.js';
 export const TRANSACTION_INTENTS = new Set(['record_income', 'record_expense', 'record_saving', 'record_commitment', 'business_sale']);
 export const MIN_TRANSACTION_CONFIDENCE = 0.6; // same gate as Dev-A / Person B ingestion
 
+/** English fallback failure strings (used only when `t` is not provided). */
 export const FAILURE_TEXT = {
-  understand: "Saathi couldn't understand your message right now, so nothing was recorded. Please try again in a little while.",
-  personC: "I couldn't reach Saathi's guidance service right now, so I couldn't answer that. Please try again in a little while.",
+  understand:  "Saathi couldn't understand your message right now, so nothing was recorded. Please try again in a little while.",
+  personC:     "I couldn't reach Saathi's guidance service right now, so I couldn't answer that. Please try again in a little while.",
   personBDown: "I understood that, but I couldn't reach your records right now, so nothing was recorded. Please try again in a little while.",
 };
 
@@ -47,51 +53,68 @@ export function buildNormalizedInput(action, rawText, userId) {
   };
 }
 
-async function askPersonC(kind, message, userId, deps, extra = {}) {
+async function askPersonC(kind, message, userId, language, deps, t, extra = {}) {
+  const failureText = t
+    ? t('errors.personCDown', { defaultValue: FAILURE_TEXT.personC })
+    : FAILURE_TEXT.personC;
   try {
-    const reply = kind === 'safety' ? await deps.safety({ message, userId }) : await deps.guidance({ question: message, userId });
+    const reply = kind === 'safety'
+      ? await deps.safety({ message, userId, language })
+      : await deps.guidance({ question: message, userId, language });
     return { kind, text: reply.text, sourceClass: reply.sourceClass, ...extra };
   } catch (err) {
-    return { kind: 'error', reason: 'person_c_unavailable', text: FAILURE_TEXT.personC, error: err, ...extra };
+    return { kind: 'error', reason: 'person_c_unavailable', text: failureText, error: err, ...extra };
   }
 }
 
 /**
- * @param {string} text the user's message
- * @param {{userId?: string, deps?: object}} [options] deps lets tests inject fakes for the network calls
+ * @param {string} text     – the user's message
+ * @param {object} [opts]
+ * @param {string}   [opts.userId]   – user ID (defaults to configured user)
+ * @param {string}   [opts.language] – selected UI language code ("en"/"te"/"hi"/"kn"). Passed to Person C so
+ *                                     LLM responses are produced in this language. Independent of NLP language
+ *                                     detection. Defaults to "en".
+ * @param {Function} [opts.t]        – i18next translator for localizing client-side failure strings.
+ * @param {object}   [opts.deps]     – injectable fakes for testing
  * @returns {Promise<{kind: 'recorded'|'duplicate'|'clarify'|'guidance'|'safety'|'error', text: string, [k: string]: any}>}
  */
-export async function handleUserMessage(text, { userId = getUserId(), deps = {} } = {}) {
+export async function handleUserMessage(text, { userId = getUserId(), language = 'en', t, deps = {} } = {}) {
   const d = { understand: understandMessage, record: recordTransaction, guidance: getGuidance, safety: checkSafety, ...deps };
   const message = String(text || '').trim();
 
   // 1. Safety check first.
   if (looksSuspicious(message)) {
-    return askPersonC('safety', message, userId, d);
+    return askPersonC('safety', message, userId, language, d, t);
   }
 
-  // 2. Language understanding (intent + entities only).
+  // 2. Language understanding (intent + entities only). NLP detects INPUT language independently.
   let nlp;
   try {
     nlp = await d.understand(message);
   } catch (err) {
-    return { kind: 'error', reason: 'nlp_unavailable', text: FAILURE_TEXT.understand, error: err };
+    const errText = t
+      ? t('errors.understand', { defaultValue: FAILURE_TEXT.understand })
+      : FAILURE_TEXT.understand;
+    return { kind: 'error', reason: 'nlp_unavailable', text: errText, error: err };
   }
   const action = toInternalAction(nlp, { userId });
 
   // 3. The model itself thinks this is a suspicious message the heuristic did not catch.
   if (action.intent === 'safety_check') {
-    return askPersonC('safety', message, userId, d, { nlp });
+    return askPersonC('safety', message, userId, language, d, t, { nlp });
   }
 
   // 4. Transactions go to Person B.
   if (TRANSACTION_INTENTS.has(action.intent) && action.parsed_transaction) {
     const { amount } = action.parsed_transaction;
     if (typeof amount !== 'number' || !(amount > 0) || action.confidence < MIN_TRANSACTION_CONFIDENCE) {
-      return { kind: 'clarify', text: nlp.reply_text || DEFAULT_CLARIFICATION, nlp };
+      const clarifyText = nlp.reply_text
+        || (t ? t('chat.clarifyDefault', { defaultValue: DEFAULT_CLARIFICATION }) : DEFAULT_CLARIFICATION);
+      return { kind: 'clarify', text: clarifyText, nlp };
     }
     try {
-      const result = await d.record(buildNormalizedInput(action, message, userId));
+      // Pass `t` so recordTransaction can build a localized confirmation string.
+      const result = await d.record(buildNormalizedInput(action, message, userId), { t });
       if (result.status === 'duplicate') return { kind: 'duplicate', text: result.confirmation, nlp };
       const body = result.response;
       return {
@@ -107,11 +130,19 @@ export async function handleUserMessage(text, { userId = getUserId(), deps = {} 
         },
       };
     } catch (err) {
-      if (err.isNetworkError) return { kind: 'error', reason: 'person_b_unavailable', text: FAILURE_TEXT.personBDown, error: err, nlp };
-      return { kind: 'error', reason: 'person_b_rejected', text: `I understood this but couldn't record it: ${err.message}`, error: err, nlp };
+      if (err.isNetworkError) {
+        const errText = t
+          ? t('errors.personBDown', { defaultValue: FAILURE_TEXT.personBDown })
+          : FAILURE_TEXT.personBDown;
+        return { kind: 'error', reason: 'person_b_unavailable', text: errText, error: err, nlp };
+      }
+      const rejectedText = t
+        ? t('errors.personBRejected', { message: err.message, defaultValue: `I understood this but couldn't record it: ${err.message}` })
+        : `I understood this but couldn't record it: ${err.message}`;
+      return { kind: 'error', reason: 'person_b_rejected', text: rejectedText, error: err, nlp };
     }
   }
 
   // 5. Questions, goals, education, chit-chat: Person C answers.
-  return askPersonC('guidance', message, userId, d, { nlp });
+  return askPersonC('guidance', message, userId, language, d, t, { nlp });
 }

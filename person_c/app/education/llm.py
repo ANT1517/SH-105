@@ -1,6 +1,7 @@
 from typing import List
 from app.rag.models import RetrievedContext
 from app.formatting.plain_text import PLAIN_TEXT_RULES, sanitize_reply
+from app.localization.language import get_language_instruction
 import os
 
 def format_contexts(contexts: List[RetrievedContext]) -> str:
@@ -17,7 +18,7 @@ def format_contexts(contexts: List[RetrievedContext]) -> str:
     return "\n\n".join(parts)
 
 class LLMInterface:
-    def generate_response(self, question: str, contexts: List[RetrievedContext]) -> str:
+    def generate_response(self, question: str, contexts: List[RetrievedContext], language: str = "en") -> str:
         raise NotImplementedError
 
     def generate_personalized_response(
@@ -26,7 +27,8 @@ class LLMInterface:
         contexts: List[RetrievedContext], 
         financial_state: dict, 
         calculated_facts: dict, 
-        literacy_instructions: str
+        literacy_instructions: str,
+        language: str = "en"
     ) -> str:
         raise NotImplementedError
 
@@ -35,7 +37,8 @@ class LLMInterface:
         result: dict,
         instructions: str,
         question: str,
-        contexts: List[RetrievedContext]
+        contexts: List[RetrievedContext],
+        language: str = "en"
     ) -> str:
         raise NotImplementedError
 
@@ -43,7 +46,8 @@ class LLMInterface:
         self,
         result: dict,
         message: str,
-        instructions: str
+        instructions: str,
+        language: str = "en"
     ) -> str:
         raise NotImplementedError
 
@@ -52,7 +56,7 @@ class MockLLM(LLMInterface):
         self.simulate_failure = simulate_failure
         self.simulate_malformed = simulate_malformed
         
-    def generate_response(self, question: str, contexts: List[RetrievedContext]) -> str:
+    def generate_response(self, question: str, contexts: List[RetrievedContext], language: str = "en") -> str:
         if self.simulate_failure:
             raise Exception("LLM connection failed")
         if self.simulate_malformed:
@@ -69,7 +73,8 @@ class MockLLM(LLMInterface):
         contexts: List[RetrievedContext], 
         financial_state: dict, 
         calculated_facts: dict, 
-        literacy_instructions: str
+        literacy_instructions: str,
+        language: str = "en"
     ) -> str:
         if self.simulate_failure:
             raise Exception("LLM connection failed")
@@ -90,7 +95,8 @@ class MockLLM(LLMInterface):
         result: dict,
         instructions: str,
         question: str,
-        contexts: List[RetrievedContext]
+        contexts: List[RetrievedContext],
+        language: str = "en"
     ) -> str:
         if self.simulate_failure:
             raise Exception("LLM connection failed")
@@ -113,7 +119,8 @@ class MockLLM(LLMInterface):
         self,
         result: dict,
         message: str,
-        instructions: str
+        instructions: str,
+        language: str = "en"
     ) -> str:
         if self.simulate_failure:
             raise Exception("LLM connection failed")
@@ -151,11 +158,13 @@ class GroqLLM(LLMInterface):
         except Exception:
             return ""
 
-    def generate_response(self, question: str, contexts: List[RetrievedContext]) -> str:
+    def generate_response(self, question: str, contexts: List[RetrievedContext], language: str = "en") -> str:
         if not contexts:
             return "I don't have enough information to answer that."
         
+        lang_instruction = get_language_instruction(language)
         system = (
+            f"{lang_instruction}\n"
             "You are a helpful financial educator.\n"
             "Use the retrieved source material as the factual knowledge base. "
             "Do not invent financial rules or facts that are not supported by the retrieved context. "
@@ -174,9 +183,12 @@ class GroqLLM(LLMInterface):
         contexts: List[RetrievedContext], 
         financial_state: dict, 
         calculated_facts: dict, 
-        literacy_instructions: str
+        literacy_instructions: str,
+        language: str = "en"
     ) -> str:
+        lang_instruction = get_language_instruction(language)
         system = (
+            f"{lang_instruction}\n"
             "You are a personalized financial assistant.\n"
             f"{literacy_instructions}\n"
             "Use the retrieved source material as the factual knowledge base. "
@@ -195,9 +207,12 @@ class GroqLLM(LLMInterface):
         result: dict,
         instructions: str,
         question: str,
-        contexts: List[RetrievedContext]
+        contexts: List[RetrievedContext],
+        language: str = "en"
     ) -> str:
+        lang_instruction = get_language_instruction(language)
         system = (
+            f"{lang_instruction}\n"
             "You are a financial simulator assistant.\n"
             f"{instructions}\n"
             "Explain the simulator results to the user based on the scenario below.\n"
@@ -216,9 +231,12 @@ class GroqLLM(LLMInterface):
         self,
         result: dict,
         message: str,
-        instructions: str
+        instructions: str,
+        language: str = "en"
     ) -> str:
+        lang_instruction = get_language_instruction(language)
         system = (
+            f"{lang_instruction}\n"
             "You are a safety shield assistant.\n"
             f"{instructions}\n"
             "The deterministic safety shield has classified a message.\n"

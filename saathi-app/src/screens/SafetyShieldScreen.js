@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { checkSafety } from '../services/personCClient.js';
 
 // --- STITCH DESIGN TOKENS ("Saathi Botanical") ---
@@ -28,17 +29,11 @@ const COLORS = {
 
 // Static safe-habit reminders: true for every message, so they are shown regardless of the result. The actual
 // verdict and explanation for the message always come from Person C (POST /api/v1/safety/check).
-const SAFE_HABITS = {
-  heading: '3 Simple Rules for your safety',
-  rules: [
-    'Do not tap or open links in messages you did not expect',
-    'Never share your OTP, PIN or password with anyone',
-    'Check with your bank using its official app or phone number',
-  ],
-};
+// (Rules are now rendered via i18n keys: safetyShield.rule1, rule2, rule3)
 
 export default function SafetyShieldScreen({ navigation } = {}) {
   const router = useRouter();
+  const { t } = useTranslation();
   // When opened from Chat ("See why & what to do") the checked message arrives as ?message=... and, since Chat
   // already has Person C's reply for it, that reply as ?result=... (so we don't run a second LLM call).
   const params = useLocalSearchParams();
@@ -95,7 +90,7 @@ export default function SafetyShieldScreen({ navigation } = {}) {
 
       {/* 1. HEADER */}
       <View style={styles.headerBar}>
-        <Text style={styles.headerTitle}>Safety Shield</Text>
+        <Text style={styles.headerTitle}>{t('safetyShield.headerTitle')}</Text>
       </View>
 
       <ScrollView
@@ -107,19 +102,19 @@ export default function SafetyShieldScreen({ navigation } = {}) {
         {/* 2. PASTE-IN CHECK */}
         <View style={styles.warningBadgeContainer}>
           <View style={styles.warningBadge}>
-            <Text style={styles.warningBadgeText}>🛡️ Check a message</Text>
+            <Text style={styles.warningBadgeText}>{t('safetyShield.checkBadge')}</Text>
           </View>
         </View>
 
-        <Text style={styles.mainHeading}>Not sure about a message?</Text>
+        <Text style={styles.mainHeading}>{t('safetyShield.heading')}</Text>
 
         <View style={styles.inputCard}>
-          <Text style={styles.flaggedLabel}>Paste the message here</Text>
+          <Text style={styles.flaggedLabel}>{t('safetyShield.inputLabel')}</Text>
           <TextInput
             style={styles.messageInput}
             value={input}
             onChangeText={setInput}
-            placeholder="e.g. a SMS or WhatsApp message you are unsure about"
+            placeholder={t('safetyShield.inputPlaceholder')}
             placeholderTextColor="#666666"
             multiline
             textAlignVertical="top"
@@ -131,7 +126,7 @@ export default function SafetyShieldScreen({ navigation } = {}) {
             disabled={!input.trim() || status === 'checking'}
             activeOpacity={0.8}
           >
-            <Text style={styles.checkButtonText}>{status === 'checking' ? 'Checking...' : 'Check this message'}</Text>
+            <Text style={styles.checkButtonText}>{status === 'checking' ? t('safetyShield.checking') : t('safetyShield.checkButton')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -139,16 +134,15 @@ export default function SafetyShieldScreen({ navigation } = {}) {
         {status === 'checking' && (
           <View style={styles.loadingRow}>
             <ActivityIndicator size="small" color={COLORS.forestInk} />
-            <Text style={styles.loadingText}>Saathi is checking this message...</Text>
+            <Text style={styles.loadingText}>{t('safetyShield.checkingText')}</Text>
           </View>
         )}
 
         {status === 'error' && (
           <View style={styles.errorCard} accessibilityRole="alert">
-            <Text style={styles.errorTitle}>Couldn't run the safety check</Text>
+            <Text style={styles.errorTitle}>{t('safetyShield.couldNotCheck')}</Text>
             <Text style={styles.errorText}>
-              Saathi could not reach the safety service, so I can't say whether this message is safe. Please do not
-              tap any links in it until you have checked another way.
+              {t('safetyShield.errorWarning')}
             </Text>
             <Text style={styles.errorDetail}>{errorText}</Text>
           </View>
@@ -157,7 +151,7 @@ export default function SafetyShieldScreen({ navigation } = {}) {
         {status === 'done' && (
           <>
             <View style={styles.flaggedCard}>
-              <Text style={styles.flaggedLabel}>Message checked</Text>
+              <Text style={styles.flaggedLabel}>{t('safetyShield.messageChecked')}</Text>
               <View style={styles.quoteBlock}>
                 <Text style={styles.flaggedSmsText}>"{checked}"</Text>
               </View>
@@ -171,9 +165,9 @@ export default function SafetyShieldScreen({ navigation } = {}) {
 
         {/* 4. SAFE-HABIT REMINDERS */}
         <View style={styles.rulesSection}>
-          <Text style={styles.rulesHeading}>{SAFE_HABITS.heading}</Text>
+          <Text style={styles.rulesHeading}>{t('safetyShield.rulesHeading')}</Text>
           <View style={styles.rulesList}>
-            {SAFE_HABITS.rules.map((rule, index) => (
+            {[t('safetyShield.rule1'), t('safetyShield.rule2'), t('safetyShield.rule3')].map((rule, index) => (
               <View key={index} style={styles.ruleRow}>
                 <View style={styles.ruleCheckCircle}>
                   <Text style={styles.ruleCheckIcon}>✓</Text>
@@ -193,7 +187,7 @@ export default function SafetyShieldScreen({ navigation } = {}) {
             onPress={handleIgnore}
             activeOpacity={0.8}
           >
-            <Text style={styles.primaryButtonText}>I understand, ignore it</Text>
+            <Text style={styles.primaryButtonText}>{t('safetyShield.ignoreButton')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -201,7 +195,7 @@ export default function SafetyShieldScreen({ navigation } = {}) {
             onPress={handleTalkToSakhi}
             activeOpacity={0.7}
           >
-            <Text style={styles.secondaryButtonText}>Talk to a Sakhi (helper)</Text>
+            <Text style={styles.secondaryButtonText}>{t('safetyShield.talkSakhiButton')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
