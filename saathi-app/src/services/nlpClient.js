@@ -1,17 +1,14 @@
 /**
  * NLP Client service for Saathi frontend
- * Communicates with the independent saathi-nlp backend service
+ * Communicates with the independent saathi-nlp backend service.
+ * Language understanding ONLY: intent, entities, language, confidence. It returns no advice; questions are answered
+ * by Person C (see messageRouter.js).
  */
 
-const DEFAULT_NLP_URL = 'http://localhost:8002';
+import { getNlpApiUrl } from './apiConfig.js';
 
-/**
- * Get the base URL for the NLP service
- */
-export function getNlpApiUrl() {
-  const url = process.env.EXPO_PUBLIC_NLP_API_URL || DEFAULT_NLP_URL;
-  return url.replace(/\/+$/, '');
-}
+// The base URL now lives in apiConfig.js (one env var per service); re-exported for existing callers.
+export { getNlpApiUrl };
 
 /**
  * Sends user text to the NLP understanding endpoint

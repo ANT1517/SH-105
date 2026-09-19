@@ -1,9 +1,20 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import FormModal from '../components/FormModal';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../theme';
+import { createGoal, getGoals } from '../services/personBClient.js';
+import { buildGoalViewModel } from '../services/viewModels.js';
+import { useLiveData } from '../hooks/useLiveData';
 
+// Live from Person B: GET /api/goals. No offline sample data here: if the call fails the screen says so and
+// offers a retry, rather than showing a made-up goal.
 export default function LakshyaScreen() {
   const insets = useSafeAreaInsets();
+  const [formOpen, setFormOpen] = useState(false);
+  const { status, data, error, reload } = useLiveData(getGoals);
+  const goal = data ? buildGoalViewModel(data) : null;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.headerBar}>
@@ -14,47 +25,103 @@ export default function LakshyaScreen() {
         contentContainerStyle={[styles.contentContainer, { paddingBottom: insets.bottom + 24 }]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.goalCard}>
-          <View style={styles.goalCardHeader}>
-            <View style={styles.goalBadge}>
-              <Text style={styles.goalBadgeText}>Education Goal</Text>
-            </View>
-            <Text style={styles.goalPercentText}>40% done</Text>
+        {status === 'loading' && (
+          <View style={styles.stateBox}>
+            <ActivityIndicator size="large" color={theme.colors.forestInk} />
+            <Text style={styles.stateText}>Loading your goal...</Text>
           </View>
+        )}
 
-          <Text style={styles.goalMainHeading}>Meena's College Fund</Text>
-          <Text style={styles.goalTargetNotice}>₹8,000 saved of ₹20,000 target</Text>
-
-          {/* Progress Bar */}
-          <View style={styles.progressBarTrack}>
-            <View style={[styles.progressBarFill, { width: '40%' }]} />
+        {status === 'error' && (
+          <View style={styles.stateBox} accessibilityRole="alert">
+            <Text style={styles.stateTitle}>Couldn't load your goal</Text>
+            <Text style={styles.stateText}>{error && error.message ? error.message : 'Please check your connection.'}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={reload} activeOpacity={0.8}>
+              <Text style={styles.retryButtonText}>Try again</Text>
+            </TouchableOpacity>
           </View>
+        )}
 
-          <View style={styles.metricsRow}>
-            <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Saved</Text>
-              <Text style={styles.metricValue}>₹8,000</Text>
+        {goal && (
+          <View style={styles.goalCard}>
+            <View style={styles.goalCardHeader}>
+              <View style={styles.goalBadge}>
+                <Text style={styles.goalBadgeText}>Goal</Text>
+              </View>
+              <Text style={styles.goalPercentText}>{goal.pct}% done</Text>
             </View>
-            <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Target</Text>
-              <Text style={styles.metricValue}>₹20,000</Text>
+
+            <Text style={styles.goalMainHeading}>{goal.name}</Text>
+            <Text style={styles.goalTargetNotice}>
+              {goal.savedText} saved of {goal.targetText} target
+            </Text>
+
+            {/* Progress Bar */}
+            <View style={styles.progressBarTrack}>
+              <View style={[styles.progressBarFill, { width: `${goal.pct}%` }]} />
             </View>
-            <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Monthly</Text>
-              <Text style={styles.metricValue}>₹2,000/mo</Text>
+
+            <View style={styles.metricsRow}>
+              <View style={styles.metricItem}>
+                <Text style={styles.metricLabel}>Saved</Text>
+                <Text style={styles.metricValue}>{goal.savedText}</Text>
+              </View>
+              <View style={styles.metricItem}>
+                <Text style={styles.metricLabel}>Target</Text>
+                <Text style={styles.metricValue}>{goal.targetText}</Text>
+              </View>
+              <View style={styles.metricItem}>
+                <Text style={styles.metricLabel}>To go</Text>
+                <Text style={styles.metricValue}>{goal.remainingText}</Text>
+              </View>
             </View>
+
+            <Text style={styles.reassuranceText}>
+              {goal.reached ? 'You have reached this goal. Congratulations!' : `${goal.remainingText} still to go for this goal.`}
+            </Text>
           </View>
+        )}
 
-          <Text style={styles.reassuranceText}>
-            Saving ₹2,000 every month will help you reach your target in 6 months.
-          </Text>
-        </View>
+        <TouchableOpacity style={styles.retryButton} onPress={() => setFormOpen(true)} activeOpacity={0.8}>
+          <Text style={styles.retryButtonText}>{goal ? 'Naya Goal — Set a New Goal' : '+ Goal — Add a Goal'}</Text>
+        </TouchableOpacity>
       </ScrollView>
+
+      <FormModal
+        visible={formOpen}
+        title="Naya Goal — New Goal"
+        fields={[
+          { key: 'name', label: 'Goal name (e.g. Education)' },
+          { key: 'target', label: 'Target amount (₹)', keyboardType: 'numeric' },
+          { key: 'saved', label: 'Already saved (₹, optional)', keyboardType: 'numeric' },
+        ]}
+        onClose={() => setFormOpen(false)}
+        onSubmit={async (v) => {
+          if (!(v.name || '').trim()) throw new Error('Please name the goal.');
+          const target = Number(v.target);
+          if (!(target > 0)) throw new Error('Target must be more than zero.');
+          await createGoal({ name: v.name.trim(), target_amount: target, saved_amount: Number(v.saved) || 0 });
+          await reload();
+        }}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  stateBox: {
+    backgroundColor: theme.colors.panelKeylime,
+    borderWidth: 1,
+    borderColor: theme.colors.hairlineMist,
+    borderRadius: theme.radius.card,
+    padding: 20,
+    gap: 10,
+    alignItems: 'center',
+  },
+  stateTitle: { fontSize: 16, fontWeight: '700', color: theme.colors.forestInk },
+  stateText: { fontSize: 13, color: theme.colors.charcoal, textAlign: 'center' },
+  retryButton: { backgroundColor: theme.colors.forestInk, paddingHorizontal: 20, paddingVertical: 10, borderRadius: theme.radius.badge },
+  retryButtonText: { color: theme.colors.paperCream, fontWeight: '700', fontSize: 14 },
   safeArea: {
     flex: 1,
     backgroundColor: theme.colors.paperCream,

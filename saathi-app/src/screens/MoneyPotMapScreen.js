@@ -1,5 +1,8 @@
 import React from 'react';
+import { Alert } from 'react-native';
+import { useRouter } from 'expo-router';
 import {
+  ActivityIndicator,
   ScrollView,
   View,
   Text,
@@ -8,7 +11,11 @@ import {
   StatusBar,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MEERA_FIXTURE, getFormattedTotal } from '../api/fixture';
+import { MEERA_FIXTURE } from '../api/fixture';
+import { getFinancialState } from '../services/personBClient.js';
+import { buildPotsViewModel, fixtureToFinancialState } from '../services/viewModels.js';
+import { OFFLINE_BANNER } from '../services/liveData.js';
+import { useLiveData } from '../hooks/useLiveData';
 
 // ─── Design tokens (Botanical Greenhouse) ───────────────────────────────────
 const C = {
@@ -24,14 +31,29 @@ const C = {
   hairline:    '#E5E3DC',
 };
 
-const { potsList, chit, educationGoal, recentEarnings } = MEERA_FIXTURE;
+// Live data from Person B (GET /api/financial-state). The bundled fixture is ONLY an explicit offline fallback,
+// used if the live call fails, and the screen says so with a banner. It is never the default.
+const offlineSample = () => fixtureToFinancialState(MEERA_FIXTURE);
 
 export default function MoneyPotMapScreen() {
   const insets = useSafeAreaInsets();
-  const goalPct = Math.min(
-    (educationGoal.savedAmount / educationGoal.targetAmount) * 100,
-    100,
-  );
+  const router = useRouter();
+  const { status, data: state, error } = useLiveData(getFinancialState, offlineSample);
+
+  if (status === 'loading' || !state) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" backgroundColor={C.cream} />
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color={C.forestInk} />
+          <Text style={styles.loadingText}>Loading your pots...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const vm = buildPotsViewModel(state);
+  const { chit, goal, business } = vm;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -42,15 +64,20 @@ export default function MoneyPotMapScreen() {
         showsVerticalScrollIndicator={false}
       >
 
+        {status === 'offline' && (
+          <View style={styles.offlineBanner} accessibilityRole="alert">
+            <Text style={styles.offlineBannerText}>{OFFLINE_BANNER}</Text>
+            {error && error.message ? <Text style={styles.offlineBannerDetail}>{error.message}</Text> : null}
+          </View>
+        )}
+
         {/* ── 1. HEADER ROW ──────────────────────────────────────────── */}
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.greetingLabel}>Namaste 🙏</Text>
-            <Text style={styles.greetingName}>
-              {MEERA_FIXTURE.user.name} — आपका स्वागत है
-            </Text>
+            <Text style={styles.greetingName}>आपका स्वागत है — Welcome</Text>
           </View>
-          <TouchableOpacity style={styles.bellBtn} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.bellBtn} activeOpacity={0.7} onPress={() => router.push('/explore')}>
             <Text style={styles.bellIcon}>🔔</Text>
           </TouchableOpacity>
         </View>
@@ -59,7 +86,7 @@ export default function MoneyPotMapScreen() {
         <View style={styles.heroCard}>
           <Text style={styles.heroEyebrow}>AAPKE PAAS KULL</Text>
           <Text style={styles.heroLabel}>Total Money in Your Hands</Text>
-          <Text style={styles.heroAmount}>{getFormattedTotal()}</Text>
+          <Text style={styles.heroAmount}>{vm.totalText}</Text>
           <Text style={styles.heroSubtext}>
             Saare pots milakar — Counted together, all your savings pots are safe
           </Text>
@@ -74,19 +101,19 @@ export default function MoneyPotMapScreen() {
 
         {/* ── 4. YOUR 5 POTS ─────────────────────────────────────────── */}
         <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Aapke 5 Pots — Your 5 Pots</Text>
+          <Text style={styles.sectionTitle}>Aapke Pots — Your Pots</Text>
           <Text style={styles.sectionSubtitle}>Tap to open</Text>
         </View>
 
         <View style={styles.potsGrid}>
-          {potsList.map((pot) => (
-            <TouchableOpacity key={pot.id} style={styles.potCard} activeOpacity={0.8}>
+          {vm.pots.map((pot) => (
+            <TouchableOpacity key={pot.id} style={styles.potCard} activeOpacity={0.8} onPress={() => Alert.alert(pot.name, `${pot.subLabel}
+${pot.amount}
+${pot.status}`)}>
               <View style={styles.potCardTop}>
                 <Text style={styles.potName}>{pot.name}</Text>
                 {/* Speaker icon — tap for audio explanation */}
-                <TouchableOpacity activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Text style={styles.speakerIcon}>🔊</Text>
-                </TouchableOpacity>
+                
               </View>
               <Text style={styles.potSubLabel}>{pot.subLabel}</Text>
               <Text style={styles.potAmount}>{pot.amount}</Text>
@@ -116,75 +143,72 @@ export default function MoneyPotMapScreen() {
             <Text style={styles.gentleNoteHeading}>Saathi ki Baat — Saathi's Gentle Note</Text>
           </View>
           <Text style={styles.gentleNoteBody}>
-            Aapka Chit commitment har mahine ₹4,000 hai. Yeh paisa abhi kharcha nahi kar sakte —
+            Aapka Chit commitment {chit.amount} hai. Yeh paisa abhi kharcha nahi kar sakte —
             isliye hum ise "kharch hone wala" paisa nahi maante.{'\n\n'}
-            Your Chit commitment is ₹4,000 every month. Because that money is locked, we leave it
+            Your Chit commitment is {chit.amount}. Because that money is committed, we leave it
             out of cash you can spend right now.
           </Text>
-          <TouchableOpacity style={styles.audioBtn} activeOpacity={0.7}>
-            <Text style={styles.audioBtnText}>🔊 Awaaz mein suniye — Hear audio explanation (30 sec)</Text>
-          </TouchableOpacity>
+          
         </View>
 
-        {/* ── 7. EDUCATION GOAL CARD ──────────────────────────────────── */}
-        <View style={styles.goalCard}>
-          <View style={styles.goalCardTop}>
-            <View style={styles.goalBadge}>
-              <Text style={styles.goalBadgeText}>{educationGoal.hindiTitle}</Text>
-            </View>
-            <Text style={styles.goalPct}>{Math.round(goalPct)}% done</Text>
-          </View>
-          <Text style={styles.goalTitle}>{educationGoal.title}</Text>
-          <Text style={styles.goalSubtext}>{educationGoal.subtext}</Text>
-
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${goalPct}%` }]} />
-          </View>
-
-          <View style={styles.goalMetrics}>
-            <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Bachaya / Saved</Text>
-              <Text style={styles.metricValue}>{educationGoal.savedText}</Text>
-            </View>
-            <View style={[styles.metricItem, styles.metricDivider]}>
-              <Text style={styles.metricLabel}>Lakshya / Target</Text>
-              <Text style={styles.metricValue}>{educationGoal.targetText}</Text>
-            </View>
-            <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Mahiney / Monthly</Text>
-              <Text style={styles.metricValue}>{educationGoal.monthlyAmount}/mo</Text>
-            </View>
-          </View>
-
-          <Text style={styles.goalReassurance}>
-            Har mahine {educationGoal.monthlyAmount} bachane se 6 mahine mein lakshya poora hoga. —
-            Saving {educationGoal.monthlyAmount} every month will reach your target in 6 months.
-          </Text>
-        </View>
-
-        {/* ── 8. RECENT EARNINGS CARD ─────────────────────────────────── */}
-        <View style={styles.earningsCard}>
-          <Text style={styles.earningsHeading}>{recentEarnings.heading}</Text>
-
-          <View style={styles.earningsRow}>
-            {recentEarnings.items.map((item, i) => (
-              <View
-                key={i}
-                style={[styles.earningsItem, item.isHighlight && styles.earningsItemHL]}
-              >
-                <Text style={[styles.earningsLabel, item.isHighlight && styles.earningsLabelHL]}>
-                  {item.label}
-                </Text>
-                <Text style={styles.earningsHindi}>{item.hindiLabel}</Text>
-                <Text style={[styles.earningsAmt, item.isHighlight && styles.earningsAmtHL]}>
-                  {item.amount}
-                </Text>
+        {/* ── 7. GOAL CARD (live: Person B goal) ──────────────────────── */}
+        {goal && (
+          <View style={styles.goalCard}>
+            <View style={styles.goalCardTop}>
+              <View style={styles.goalBadge}>
+                <Text style={styles.goalBadgeText}>Lakshya</Text>
               </View>
-            ))}
-          </View>
+              <Text style={styles.goalPct}>{goal.pct}% done</Text>
+            </View>
+            <Text style={styles.goalTitle}>{goal.title}</Text>
 
-          <Text style={styles.earningsSubtext}>{recentEarnings.subtext}</Text>
-        </View>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${goal.pct}%` }]} />
+            </View>
+
+            <View style={styles.goalMetrics}>
+              <View style={styles.metricItem}>
+                <Text style={styles.metricLabel}>Bachaya / Saved</Text>
+                <Text style={styles.metricValue}>{goal.savedText}</Text>
+              </View>
+              <View style={[styles.metricItem, styles.metricDivider]}>
+                <Text style={styles.metricLabel}>Lakshya / Target</Text>
+                <Text style={styles.metricValue}>{goal.targetText}</Text>
+              </View>
+              <View style={styles.metricItem}>
+                <Text style={styles.metricLabel}>Baaki / To go</Text>
+                <Text style={styles.metricValue}>{goal.remainingText}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* ── 8. BUSINESS CARD (live: Person B ledger summary) ────────── */}
+        {business && (
+          <View style={styles.earningsCard}>
+            <Text style={styles.earningsHeading}>Vyapar — {business.activity}</Text>
+
+            <View style={styles.earningsRow}>
+              <View style={styles.earningsItem}>
+                <Text style={styles.earningsLabel}>Revenue</Text>
+                <Text style={styles.earningsHindi}>Kamai</Text>
+                <Text style={styles.earningsAmt}>{business.revenue}</Text>
+              </View>
+              <View style={styles.earningsItem}>
+                <Text style={styles.earningsLabel}>Cost</Text>
+                <Text style={styles.earningsHindi}>Kharcha</Text>
+                <Text style={styles.earningsAmt}>{business.cost}</Text>
+              </View>
+              <View style={[styles.earningsItem, styles.earningsItemHL]}>
+                <Text style={[styles.earningsLabel, styles.earningsLabelHL]}>Profit</Text>
+                <Text style={styles.earningsHindi}>Munafa</Text>
+                <Text style={[styles.earningsAmt, styles.earningsAmtHL]}>{business.profit}</Text>
+              </View>
+            </View>
+
+            <Text style={styles.earningsSubtext}>Latest ledger entry</Text>
+          </View>
+        )}
 
       </ScrollView>
     </SafeAreaView>
@@ -193,6 +217,11 @@ export default function MoneyPotMapScreen() {
 
 // ─── Styles ────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  loadingText: { fontSize: 14, color: C.charcoal },
+  offlineBanner: { backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A', borderRadius: 12, padding: 12, gap: 4 },
+  offlineBannerText: { fontSize: 13, fontWeight: '700', color: '#92400E' },
+  offlineBannerDetail: { fontSize: 11, color: '#92400E', opacity: 0.8 },
   safeArea:  { flex: 1, backgroundColor: C.cream },
   scroll:    { flex: 1, backgroundColor: C.cream },
   content:   { paddingHorizontal: 16, paddingTop: 12, gap: 16 },
@@ -229,6 +258,9 @@ const styles = StyleSheet.create({
   potAmount:  { fontSize: 20, fontWeight: '700', color: C.forestInk, marginTop: 6, marginBottom: 6 },
   potStatusPill: { backgroundColor: C.keylime, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999, alignSelf: 'flex-start' },
   potStatusText: { fontSize: 11, fontWeight: '600', color: C.forestInk },
+
+  txRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.white, borderWidth: 1, borderColor: C.sage, borderRadius: 12, padding: 12, marginTop: 8, gap: 8 },
+  txAmount: { fontSize: 16, fontWeight: '700' },
 
   // 5. Chit
   chitCard:      { backgroundColor: C.slate, borderRadius: 14, padding: 20, gap: 6 },

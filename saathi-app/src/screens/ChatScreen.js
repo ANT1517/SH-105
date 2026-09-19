@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   StatusBar,
   StyleSheet,
@@ -13,8 +13,11 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { MEERA_FIXTURE, getFormattedTotal } from '../api/fixture';
-import { understandMessage } from '../services/nlpClient';
+import { handleUserMessage } from '../services/messageRouter.js';
+import { formatINR } from '../services/viewModels.js';
+import { guessAudioMeta, transcribeAudio } from '../services/voiceClient.js';
+import { appendAudio } from '../services/voiceRuntime'; // platform adapter: a File on native, a Blob on web
+import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
 const C = {
@@ -37,90 +40,114 @@ const C = {
   infoText:  '#1E40AF',
 };
 
-const { chatMessages: MSGS, educationGoal: EDU } = MEERA_FIXTURE;
-
-// ─── Initial message list ────────────────────────────────────────────────────
-const INITIAL_MESSAGES = [
-  {
-    id: '1',
-    sender: 'user',
-    type: 'voice',
-    duration: '0:04',
-    text: MSGS[0].text,           // "I earned ₹800 from tailoring today"
-    timestamp: MSGS[0].timestamp,
-  },
-  {
-    id: '2',
-    sender: 'saathi',
-    type: 'text',
-    text: `Got it! I've added ₹800 to your Business pot from tailoring. Aapka kul paisa ab ${getFormattedTotal()} hai — Your total across all pots is now ${getFormattedTotal()}.`,
-    timestamp: MSGS[1].timestamp,
-  },
-  {
-    id: '3',
-    sender: 'user',
-    type: 'text',
-    text: MSGS[2].text,           // "Can I save enough for my daughter's education..."
-    timestamp: MSGS[2].timestamp,
-  },
-  {
-    id: '4',
-    sender: 'saathi',
-    type: 'text',
-    text: `Aapko ₹12,000 aur chahiye. Agar aap har mahine ₹2,000 bachati hain, to 6 mahine mein lakshya poora hoga. — ${MSGS[3].text}`,
-    timestamp: MSGS[3].timestamp,
-  },
-];
+// No canned conversation: the list starts empty and every Saathi message is a real reply from Person B (recording
+// confirmation) or Person C (guidance / safety), or an honest failure message. See services/messageRouter.js.
 
 export default function ChatScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [messages, setMessages] = useState(INITIAL_MESSAGES);
+  const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [status, setStatus] = useState('idle'); // 'idle' | 'thinking' | 'success' | 'error'
   const [errorMessage, setErrorMessage] = useState(null);
 
-  const handleSend = async () => {
-    if (!inputText.trim() || status === 'thinking') return;
+  // A ref (not state) so two taps / Enter+click in the same tick cannot both pass the guard.
+  const sendingRef = useRef(false);
 
-    const userText = inputText.trim();
+  const voice = useVoiceRecorder();
+  const [voiceState, setVoiceState] = useState('idle'); // 'idle' | 'recording' | 'transcribing'
+
+  // `spoken` is the Whisper transcript when this message came from the mic; otherwise the typed text is sent.
+  // (Button/Enter handlers pass an event object, which has no `spoken`.)
+  const handleSend = async ({ spoken } = {}) => {
+    const userText = (typeof spoken === 'string' ? spoken : inputText).trim();
+    if (!userText || status === 'thinking' || sendingRef.current) return;
+    sendingRef.current = true;
+    const messageType = typeof spoken === 'string' ? 'voice' : 'text';
+
     const userTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const userMessageId = Date.now().toString();
 
     const newUserMessage = {
       id: userMessageId,
       sender: 'user',
-      type: 'text',
+      type: messageType,
       text: userText,
       timestamp: userTimestamp,
     };
 
     // 1. Add user's message immediately & 2. clear input & 3. show thinking state
     setMessages((prev) => [...prev, newUserMessage]);
-    setInputText('');
+    if (messageType === 'text') setInputText('');
     setStatus('thinking');
     setErrorMessage(null);
 
     try {
-      // 4. Send message to real NLP backend & 5. Wait for REAL NLP response
-      const nlpResult = await understandMessage(userText);
+      // Route it: safety check first, then transaction -> Person B, otherwise question -> Person C.
+      const result = await handleUserMessage(userText);
 
-      // 6. Add returned reply_text as Saathi's message with real metadata
       const saathiMessage = {
         id: (Date.now() + 1).toString(),
         sender: 'saathi',
         type: 'text',
-        text: nlpResult.reply_text,
+        text: result.text,
+        kind: result.kind,
+        isError: result.kind === 'error',
+        recorded: result.recorded,
+        flaggedMessage: result.kind === 'safety' ? userText : undefined,
+        nlpMeta: result.nlp, // real NLP metadata (intent, entities, language, confidence), when NLP ran
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        nlpMeta: nlpResult, // store real metadata
       };
 
       setMessages((prev) => [...prev, saathiMessage]);
-      setStatus('success');
+      setStatus(result.kind === 'error' ? 'error' : 'success');
     } catch (err) {
-      console.warn('[ChatScreen] NLP request failed:', err.message);
+      console.warn('[ChatScreen] unexpected failure:', err && err.message);
       setStatus('error');
-      setErrorMessage('Saathi could not connect right now. Please try again.');
+      setErrorMessage("Something went wrong on my side, so nothing was recorded. Please try again.");
+    } finally {
+      sendingRef.current = false;
+    }
+  };
+
+  // Mic button: tap to start recording, tap again to stop. The audio goes to Dev-A's Whisper (the same model the
+  // WhatsApp bot uses) and the transcript is sent through the normal routing (safety check first) like typed text.
+  const handleMic = async () => {
+    if (voiceState === 'transcribing' || status === 'thinking') return;
+
+    if (voiceState === 'recording') {
+      setVoiceState('transcribing');
+      setErrorMessage(null);
+      try {
+        const uri = await voice.stop();
+        const transcript = await transcribeAudio({ uri, ...guessAudioMeta(uri) }, { appendAudio });
+        if (!transcript) {
+          setStatus('error');
+          setErrorMessage("I couldn't hear anything clearly. Please try again, a little closer to the microphone.");
+        } else {
+          await handleSend({ spoken: transcript });
+        }
+      } catch (err) {
+        console.warn('[ChatScreen] voice failed:', err && err.message);
+        setStatus('error');
+        setErrorMessage(
+          err && err.isNetworkError
+            ? "I couldn't reach the speech service, so nothing was heard or recorded. Please try again, or type your message."
+            : `I couldn't turn that recording into text (${err && err.message ? err.message : 'unknown error'}). Nothing was recorded.`,
+        );
+      } finally {
+        setVoiceState('idle');
+      }
+      return;
+    }
+
+    setErrorMessage(null);
+    const started = await voice.start();
+    if (started) {
+      setVoiceState('recording');
+    } else {
+      setStatus('error');
+      setErrorMessage(voice.error || 'Could not start recording.');
     }
   };
 
@@ -131,14 +158,14 @@ export default function ChatScreen() {
       <View key={item.id}>
         {/* ── Chat bubble ─────────────────────────────────────────────── */}
         <View style={[styles.messageRow, isUser ? styles.userRow : styles.saathiRow]}>
-          <View style={[styles.messageBubble, isUser ? styles.userBubble : styles.saathiBubble]}>
+          <View style={[styles.messageBubble, isUser ? styles.userBubble : styles.saathiBubble, item.isError && styles.errorSaathiBubble]}>
             {!isUser && <Text style={styles.senderLabel}>Saathi</Text>}
 
             {item.type === 'voice' ? (
               <View style={styles.voiceContainer}>
                 <View style={styles.voiceBadge}>
                   <Text style={styles.waveformIcon}>〰️🎙️</Text>
-                  <Text style={styles.voiceDuration}>{item.duration}</Text>
+                  {item.duration ? <Text style={styles.voiceDuration}>{item.duration}</Text> : null}
                 </View>
                 <Text style={styles.userBubbleText}>"{item.text}"</Text>
               </View>
@@ -154,100 +181,57 @@ export default function ChatScreen() {
           </View>
         </View>
 
-        {/* ── After message id=2: Business Pot Confirmation Card ──────── */}
-        {item.id === '2' && (
+        {/* ── Recorded transaction: card built from Person B's own response ─────── */}
+        {!isUser && item.kind === 'recorded' && item.recorded && (
           <View style={styles.confirmCardWrap}>
             <View style={styles.confirmCard}>
               <View style={styles.confirmCardTop}>
                 <View style={styles.confirmPill}>
-                  <Text style={styles.confirmPillText}>✅ Business Pot</Text>
+                  <Text style={styles.confirmPillText}>
+                    ✅ {item.recorded.pot.charAt(0).toUpperCase() + item.recorded.pot.slice(1).replace(/_/g, ' ')} Pot
+                  </Text>
                 </View>
-                <Text style={styles.confirmAmount}>+₹800</Text>
+                <Text style={styles.confirmAmount}>
+                  {['expense', 'commitment'].includes(item.recorded.type) ? '-' : '+'}{formatINR(item.recorded.amount)}
+                </Text>
               </View>
-              <Text style={styles.confirmLine}>Tailoring kamai — Tailoring income added</Text>
-              <View style={styles.confirmDivider} />
-              <View style={styles.confirmTotalRow}>
-                <Text style={styles.confirmTotalLabel}>Total abhi — Running total</Text>
-                <Text style={styles.confirmTotalValue}>{getFormattedTotal()}</Text>
-              </View>
+              <Text style={styles.confirmLine}>
+                {item.recorded.type.charAt(0).toUpperCase() + item.recorded.type.slice(1)} • {item.recorded.category}
+              </Text>
+              {item.recorded.totalBalance != null && (
+                <>
+                  <View style={styles.confirmDivider} />
+                  <View style={styles.confirmTotalRow}>
+                    <Text style={styles.confirmTotalLabel}>Total abhi — Running total</Text>
+                    <Text style={styles.confirmTotalValue}>{formatINR(item.recorded.totalBalance)}</Text>
+                  </View>
+                </>
+              )}
             </View>
           </View>
         )}
 
-        {/* ── After message id=2: Suspicious SMS Alert Card ───────────── */}
-        {item.id === '2' && (
+        {/* ── Safety check: link to the full Safety Shield with Person C's result ── */}
+        {!isUser && item.kind === 'safety' && item.flaggedMessage && (
           <View style={styles.alertCardContainer}>
             <View style={styles.alertCard}>
               <View style={styles.alertCardHeader}>
-                <Text style={styles.alertCardBadge}>⚠️ Suspicious SMS Detected</Text>
+                <Text style={styles.alertCardBadge}>🛡️ Safety check</Text>
               </View>
               <View style={styles.alertCardBody}>
-                <Text style={styles.alertCardLabel}>Flagged message:</Text>
-                <Text style={styles.alertCardSms}>
-                  "Your KYC will expire. Click here to verify: bit.ly/xyz123"
-                </Text>
-                <Text style={styles.alertCardDesc}>
-                  Real banks do not ask for KYC verification via urgent SMS links.
-                </Text>
+                <Text style={styles.alertCardLabel}>Message checked:</Text>
+                <Text style={styles.alertCardSms}>"{item.flaggedMessage}"</Text>
               </View>
               <TouchableOpacity
                 style={styles.seeWhyButton}
-                onPress={() => router.push('/safetyshield')}
+                onPress={() =>
+                  router.push(
+                    `/safetyshield?message=${encodeURIComponent(item.flaggedMessage)}&result=${encodeURIComponent(item.text.replace(/^Safety check: /, ''))}`,
+                  )
+                }
                 activeOpacity={0.8}
               >
                 <Text style={styles.seeWhyButtonText}>🛡️ See why &amp; what to do</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* ── After message id=4: Education Goal Card ─────────────────── */}
-        {item.id === '4' && (
-          <View style={styles.eduCardWrap}>
-            <View style={styles.eduCard}>
-              {/* Header row */}
-              <View style={styles.eduCardTop}>
-                <View style={styles.eduBadge}>
-                  <Text style={styles.eduBadgeText}>{EDU.hindiTitle}</Text>
-                </View>
-                <Text style={styles.eduPctText}>
-                  {Math.round((EDU.savedAmount / EDU.targetAmount) * 100)}% done
-                </Text>
-              </View>
-
-              <Text style={styles.eduTitle}>{EDU.title}</Text>
-              <Text style={styles.eduSubtext}>{EDU.subtext}</Text>
-
-              {/* Progress bar */}
-              <View style={styles.eduProgressTrack}>
-                <View
-                  style={[
-                    styles.eduProgressFill,
-                    { width: `${Math.round((EDU.savedAmount / EDU.targetAmount) * 100)}%` },
-                  ]}
-                />
-              </View>
-
-              {/* Metrics */}
-              <View style={styles.eduMetrics}>
-                <View style={styles.eduMetricItem}>
-                  <Text style={styles.eduMetricLabel}>Bachaya</Text>
-                  <Text style={styles.eduMetricValue}>{EDU.savedText}</Text>
-                </View>
-                <View style={styles.eduMetricItem}>
-                  <Text style={styles.eduMetricLabel}>Lakshya</Text>
-                  <Text style={styles.eduMetricValue}>{EDU.targetText}</Text>
-                </View>
-              </View>
-
-              {/* Action buttons */}
-              <TouchableOpacity style={styles.eduPrimaryBtn} activeOpacity={0.8}>
-                <Text style={styles.eduPrimaryBtnText}>
-                  📅 Set {EDU.monthlyAmount} monthly reminder
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.eduSecondaryBtn} activeOpacity={0.7}>
-                <Text style={styles.eduSecondaryBtnText}>📊 Check Education Pot</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -412,6 +396,14 @@ export default function ChatScreen() {
           renderItem={renderMessageItem}
           contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 24 }]}
           showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyWrap}>
+              <Text style={styles.emptyTitle}>Namaste 🙏</Text>
+              <Text style={styles.emptyText}>
+                Tell Saathi what you earned or spent, or ask a question about your money. You can also paste a message you are unsure about.
+              </Text>
+            </View>
+          }
           ListFooterComponent={
             <>
               {status === 'thinking' && (
@@ -440,7 +432,7 @@ export default function ChatScreen() {
           <View style={styles.inputWrapper}>
             <TextInput
               style={styles.textInput}
-              placeholder="Saathi se kuch bhi poochein — Ask Saathi anything..."
+              placeholder={voiceState === 'recording' ? 'Listening... tap ⏹ when you are done' : 'Saathi se kuch bhi poochein — Ask Saathi anything...'}
               placeholderTextColor="#666666"
               value={inputText}
               onChangeText={setInputText}
@@ -451,8 +443,18 @@ export default function ChatScreen() {
                 <Text style={styles.actionButtonIcon}>➔</Text>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity style={styles.actionButton} activeOpacity={0.8}>
-                <Text style={styles.actionButtonIcon}>🎙️</Text>
+              <TouchableOpacity
+                style={[styles.actionButton, voiceState === 'recording' && styles.actionButtonRecording]}
+                onPress={handleMic}
+                disabled={voiceState === 'transcribing'}
+                activeOpacity={0.8}
+                accessibilityLabel={voiceState === 'recording' ? 'Stop recording' : 'Speak to Saathi'}
+              >
+                {voiceState === 'transcribing' ? (
+                  <ActivityIndicator size="small" color={C.cream} />
+                ) : (
+                  <Text style={styles.actionButtonIcon}>{voiceState === 'recording' ? '⏹' : '🎙️'}</Text>
+                )}
               </TouchableOpacity>
             )}
           </View>
@@ -464,6 +466,10 @@ export default function ChatScreen() {
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
+  errorSaathiBubble: { backgroundColor: C.errorBg },
+  emptyWrap: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24, gap: 8 },
+  emptyTitle: { fontSize: 20, fontWeight: '700', color: C.forestInk },
+  emptyText: { fontSize: 14, color: C.charcoal, textAlign: 'center', lineHeight: 20 },
   safeArea:  { flex: 1, backgroundColor: C.cream },
   container: { flex: 1, backgroundColor: C.cream },
 
@@ -544,6 +550,7 @@ const styles = StyleSheet.create({
   textInput:    { flex: 1, fontSize: 14, fontWeight: '500', color: C.charcoal, paddingVertical: 8 },
   actionButton: { width: 40, height: 40, borderRadius: 999, backgroundColor: C.forestInk, justifyContent: 'center', alignItems: 'center' },
   actionButtonIcon: { fontSize: 16, color: C.cream },
+  actionButtonRecording: { backgroundColor: C.errorText },
 
   // Thinking State
   thinkingContainer: { marginVertical: 6, alignItems: 'flex-start' },

@@ -32,6 +32,19 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Saathi uses the microphone so you can speak to Saathi instead of typing."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Saathi uses the camera so you can photograph a bill.",
+          "photosPermission": "Saathi reads bills you choose from your gallery."
+        }
       ]
     ],
     "experiments": {

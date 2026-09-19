@@ -1,15 +1,18 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { checkSafety } from '../services/personCClient.js';
 
 // --- STITCH DESIGN TOKENS ("Saathi Botanical") ---
 const COLORS = {
@@ -23,30 +26,54 @@ const COLORS = {
   sageBorder: '#9AC9A2',
 };
 
-// --- FIXTURE DATA ---
-const SAFETY_DATA = {
-  warningBadge: '⚠️ Please be careful',
-  heading: 'This message looks suspicious',
-  flaggedLabel: 'Flagged message',
-  flaggedSmsText: 'Your KYC will expire. Click here to verify: bit.ly/xyz123',
-  explanationText:
-    'This message is asking you to click a link urgently. Real banks do not ask you to verify KYC through a text message link. We cannot be 100% sure, but please do not click this link.',
-  rulesHeading: '3 Simple Rules for your safety',
+// Static safe-habit reminders: true for every message, so they are shown regardless of the result. The actual
+// verdict and explanation for the message always come from Person C (POST /api/v1/safety/check).
+const SAFE_HABITS = {
+  heading: '3 Simple Rules for your safety',
   rules: [
-    'Do not tap or open the link',
-    'Your bank money is safe right now',
-    'Never share your 4 or 6 digit OTP',
+    'Do not tap or open links in messages you did not expect',
+    'Never share your OTP, PIN or password with anyone',
+    'Check with your bank using its official app or phone number',
   ],
-  audioButtonText: '🔊 Hear explanation (30 sec)',
-  primaryButtonText: 'I understand, ignore it',
-  secondaryButtonText: 'Talk to a Sakhi (helper)',
 };
 
 export default function SafetyShieldScreen({ navigation } = {}) {
   const router = useRouter();
+  // When opened from Chat ("See why & what to do") the checked message arrives as ?message=... and, since Chat
+  // already has Person C's reply for it, that reply as ?result=... (so we don't run a second LLM call).
+  const params = useLocalSearchParams();
+  const initialMessage = typeof params.message === 'string' ? params.message : '';
+  const initialResult = typeof params.result === 'string' ? params.result : '';
+
+  const [input, setInput] = useState(initialMessage);
+  const [checked, setChecked] = useState(initialResult ? initialMessage.trim() : ''); // the exact message that was checked
+  const [status, setStatus] = useState(initialResult ? 'done' : 'idle');            // 'idle' | 'checking' | 'done' | 'error'
+  const [resultText, setResultText] = useState(initialResult);
+  const [errorText, setErrorText] = useState('');
+
+  const runCheck = useCallback(async (message) => {
+    const text = (message || '').trim();
+    if (!text) return;
+    setStatus('checking');
+    setChecked(text);
+    setResultText('');
+    setErrorText('');
+    try {
+      const reply = await checkSafety({ message: text });
+      setResultText(reply.text);
+      setStatus('done');
+    } catch (err) {
+      setErrorText(err && err.message ? err.message : 'Unknown error');
+      setStatus('error');
+    }
+  }, []);
+
+  // A message handed over without a result is checked immediately.
+  useEffect(() => {
+    if (initialMessage.trim() && !initialResult) runCheck(initialMessage);
+  }, [initialMessage, initialResult, runCheck]);
 
   const handleIgnore = () => {
-    console.log('I understand, ignore it pressed');
     if (navigation?.canGoBack()) {
       navigation.goBack();
     } else if (router.canGoBack()) {
@@ -55,7 +82,7 @@ export default function SafetyShieldScreen({ navigation } = {}) {
   };
 
   const handleTalkToSakhi = () => {
-    console.log('Talk to a Sakhi pressed');
+    router.push('/explore');
   };
 
   const handleAudioExplanation = () => {
@@ -75,35 +102,78 @@ export default function SafetyShieldScreen({ navigation } = {}) {
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* 2. WARNING PILL BADGE */}
+        {/* 2. PASTE-IN CHECK */}
         <View style={styles.warningBadgeContainer}>
           <View style={styles.warningBadge}>
-            <Text style={styles.warningBadgeText}>{SAFETY_DATA.warningBadge}</Text>
+            <Text style={styles.warningBadgeText}>🛡️ Check a message</Text>
           </View>
         </View>
 
-        {/* 3. HEADING */}
-        <Text style={styles.mainHeading}>{SAFETY_DATA.heading}</Text>
+        <Text style={styles.mainHeading}>Not sure about a message?</Text>
 
-        {/* 4. FLAGGED MESSAGE CARD */}
-        <View style={styles.flaggedCard}>
-          <Text style={styles.flaggedLabel}>{SAFETY_DATA.flaggedLabel}</Text>
-          <View style={styles.quoteBlock}>
-            <Text style={styles.flaggedSmsText}>"{SAFETY_DATA.flaggedSmsText}"</Text>
+        <View style={styles.inputCard}>
+          <Text style={styles.flaggedLabel}>Paste the message here</Text>
+          <TextInput
+            style={styles.messageInput}
+            value={input}
+            onChangeText={setInput}
+            placeholder="e.g. a SMS or WhatsApp message you are unsure about"
+            placeholderTextColor="#666666"
+            multiline
+            textAlignVertical="top"
+            maxLength={2000}
+          />
+          <TouchableOpacity
+            style={[styles.checkButton, (!input.trim() || status === 'checking') && styles.checkButtonDisabled]}
+            onPress={() => runCheck(input)}
+            disabled={!input.trim() || status === 'checking'}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.checkButtonText}>{status === 'checking' ? 'Checking...' : 'Check this message'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* 3. RESULT: everything below comes from Person C */}
+        {status === 'checking' && (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator size="small" color={COLORS.forestInk} />
+            <Text style={styles.loadingText}>Saathi is checking this message...</Text>
           </View>
-        </View>
+        )}
 
-        {/* 5. EXPLANATION CARD */}
-        <View style={styles.explanationCard}>
-          <Text style={styles.explanationText}>{SAFETY_DATA.explanationText}</Text>
-        </View>
+        {status === 'error' && (
+          <View style={styles.errorCard} accessibilityRole="alert">
+            <Text style={styles.errorTitle}>Couldn't run the safety check</Text>
+            <Text style={styles.errorText}>
+              Saathi could not reach the safety service, so I can't say whether this message is safe. Please do not
+              tap any links in it until you have checked another way.
+            </Text>
+            <Text style={styles.errorDetail}>{errorText}</Text>
+          </View>
+        )}
 
-        {/* 6. "3 SIMPLE RULES" SECTION */}
+        {status === 'done' && (
+          <>
+            <View style={styles.flaggedCard}>
+              <Text style={styles.flaggedLabel}>Message checked</Text>
+              <View style={styles.quoteBlock}>
+                <Text style={styles.flaggedSmsText}>"{checked}"</Text>
+              </View>
+            </View>
+
+            <View style={styles.explanationCard}>
+              <Text style={styles.explanationText}>{resultText}</Text>
+            </View>
+          </>
+        )}
+
+        {/* 4. SAFE-HABIT REMINDERS */}
         <View style={styles.rulesSection}>
-          <Text style={styles.rulesHeading}>{SAFETY_DATA.rulesHeading}</Text>
+          <Text style={styles.rulesHeading}>{SAFE_HABITS.heading}</Text>
           <View style={styles.rulesList}>
-            {SAFETY_DATA.rules.map((rule, index) => (
+            {SAFE_HABITS.rules.map((rule, index) => (
               <View key={index} style={styles.ruleRow}>
                 <View style={styles.ruleCheckCircle}>
                   <Text style={styles.ruleCheckIcon}>✓</Text>
@@ -114,23 +184,16 @@ export default function SafetyShieldScreen({ navigation } = {}) {
           </View>
         </View>
 
-        {/* 7. AUDIO EXPLANATION BUTTON */}
-        <TouchableOpacity
-          style={styles.audioButton}
-          onPress={handleAudioExplanation}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.audioButtonText}>{SAFETY_DATA.audioButtonText}</Text>
-        </TouchableOpacity>
+        {/* 5. AUDIO EXPLANATION BUTTON (not wired yet) */}
 
-        {/* 8. TWO ACTION BUTTONS */}
+        {/* 6. TWO ACTION BUTTONS */}
         <View style={styles.actionButtonsContainer}>
           <TouchableOpacity
             style={styles.primaryButton}
             onPress={handleIgnore}
             activeOpacity={0.8}
           >
-            <Text style={styles.primaryButtonText}>{SAFETY_DATA.primaryButtonText}</Text>
+            <Text style={styles.primaryButtonText}>I understand, ignore it</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -138,7 +201,7 @@ export default function SafetyShieldScreen({ navigation } = {}) {
             onPress={handleTalkToSakhi}
             activeOpacity={0.7}
           >
-            <Text style={styles.secondaryButtonText}>{SAFETY_DATA.secondaryButtonText}</Text>
+            <Text style={styles.secondaryButtonText}>Talk to a Sakhi (helper)</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -147,6 +210,36 @@ export default function SafetyShieldScreen({ navigation } = {}) {
 }
 
 const styles = StyleSheet.create({
+  inputCard: {
+    backgroundColor: COLORS.keylimeWash,
+    borderRadius: 14,
+    padding: 16,
+    gap: 10,
+  },
+  messageInput: {
+    minHeight: 96,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.sageBorder,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    color: COLORS.charcoal,
+  },
+  checkButton: {
+    backgroundColor: COLORS.forestInk,
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  checkButtonDisabled: { opacity: 0.45 },
+  checkButtonText: { color: COLORS.cream, fontSize: 15, fontWeight: '700' },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, justifyContent: 'center' },
+  loadingText: { fontSize: 14, color: COLORS.charcoal },
+  errorCard: { backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A', borderRadius: 14, padding: 16, gap: 6 },
+  errorTitle: { fontSize: 15, fontWeight: '700', color: '#92400E' },
+  errorText: { fontSize: 14, color: '#92400E', lineHeight: 20 },
+  errorDetail: { fontSize: 11, color: '#92400E', opacity: 0.8 },
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.cream,

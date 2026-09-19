@@ -13,7 +13,8 @@
  * → frontend refresh
  *
  * IMPORTANT ARCHITECTURAL BOUNDARY:
- * 1. This adapter DOES NOT call Person B or modify any financial state yet.
+ * 1. This adapter DOES NOT call Person B or modify any financial state itself. messageRouter.js does the calling:
+ *    it builds Person B's /api/transactions payload explicitly from this action object.
  * 2. Origin channel is set dynamically (e.g. "app_chat" or user-specified),
  *    NEVER hardcoded as "whatsapp" since chat messages originate from the React Native app.
  * 3. Compatibility Notice:

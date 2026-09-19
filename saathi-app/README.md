@@ -54,3 +54,28 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+## Backend wiring
+
+Every screen talks to real services; nothing in the UI is a canned reply.
+
+| Screen | Data source |
+| --- | --- |
+| Home / Money Pot Map | Person B `GET /api/financial-state` |
+| Ledger | Person B `GET /api/ledger` |
+| Goals (Lakshya) | Person B `GET /api/goals` |
+| Chat | safety check first (Person C `POST /api/v1/safety/check`), then saathi-nlp understanding; transactions go to Person B `POST /api/transactions`, questions to Person C `POST /api/v1/integration/person_a/guidance` |
+| Safety Shield | Person C `POST /api/v1/safety/check` on a message the user pastes in |
+
+- Service URLs are environment variables, one per service (see `.env.example`, read in `src/services/apiConfig.js`).
+- Home and Ledger fall back to the bundled sample data (`src/api/fixture.js`) **only** if the live call fails, and then show an
+  "offline sample data" banner. Goals shows an error with a retry instead. Chat never falls back to canned text: a failure says nothing was recorded.
+- Only Person C may use an LLM for financial content (masterplan section 8). The NLP service only classifies intent and extracts entities.
+- Message routing lives in `src/services/messageRouter.js`.
+
+### Tests
+
+```bash
+npm test                      # logic layer: config, clients, router, view models, safety trigger, screen guards
+cd nlp-service && npm test    # NLP service, including the LLM-boundary tests
+```

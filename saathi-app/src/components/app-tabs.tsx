@@ -71,6 +71,21 @@ export default function AppTabs() {
         }}
       />
 
+      {/* Len-Den (all transactions; the Khata tab stays business-only) */}
+      <Tabs.Screen
+        name="transactions"
+        options={{
+          title: 'Len-Den',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'swap-horizontal' : 'swap-horizontal-outline'}
+              size={22}
+              color={color}
+            />
+          ),
+        }}
+      />
+
       {/* 4. Sahayata (Chat / Assistant) */}
       <Tabs.Screen
         name="explore"

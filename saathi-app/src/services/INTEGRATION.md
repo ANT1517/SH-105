@@ -44,14 +44,14 @@ The independent NLP service (`POST /api/nlp/understand`) is responsible exclusiv
   },
   "language": "en | hi | te | mixed | unknown",
   "confidence": 0.96,
-  "reply_text": "Got it. I understood that you earned ₹800 from tailoring."
+  "reply_text": ""
 }
 ```
 
 If the input is ambiguous or incomplete (e.g. *"I got some money from tailoring"*), the NLP layer:
 - Sets `transaction.amount: null` (never hallucinates an amount)
 - Assigns lower confidence (`< 0.60`)
-- Produces a polite clarification request in `reply_text`
+- Produces a clarification request in `reply_text` (a deterministic server template, not model text)
 
 ---
 
@@ -104,3 +104,20 @@ When the user expresses intent relating to advisory, goals, education, or fraud 
 | **Frontend (`ChatScreen`, `theme`)** | Display, user interactions, loading/confidence states | ❌ No |
 | **Person C Guidance Engine** | Nudges, savings projections, goal recommendations | ❌ No |
 | **Person B Ledger Engine** | Pot balances, transaction journal, running totals |  **YES (Sole Source of Truth)** |
+
+
+---
+
+## 8. Implemented chat routing (Step 5)
+
+`src/services/messageRouter.js` implements the pipeline above. Order (the same as Dev-A's WhatsApp webhook):
+
+1. **Safety check first.** A message that trips the safety trigger (`safetyTrigger.js`, a tested copy of Person C's rules) goes to
+   Person C `POST /api/v1/safety/check` and is never treated as a transaction.
+2. **NLP understanding** (`nlpClient.js`): intent + entities only. The NLP service returns no advice.
+3. **Transaction** with an amount and confidence >= 0.6: an explicit normalized-input payload is POSTed to Person B
+   `/api/transactions`, and the reply is Person B's own confirmation. Incomplete transactions get a clarification question and record nothing.
+4. **Everything else** goes to Person C `POST /api/v1/integration/person_a/guidance`.
+
+Failures are reported honestly ("nothing was recorded"); no message gets a canned or fixture reply.
+The adapter itself still does not call any service: `messageRouter.js` does.
