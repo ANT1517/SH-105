@@ -12,7 +12,13 @@ from ..rag.retrieval import ChromaRetriever
 from ..education.llm import MockLLM
 from ..education.service import EducationService
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(title="Saathi - Person C Service")
+
+# The Expo web build calls this service straight from the browser, so allow cross-origin requests
+# (same permissive dev policy as Person B's cors()). Tighten allow_origins for production.
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 from ..personalization.service import PersonalizationService
 from ..contracts.quiz import QuizRequest, QuizResponse

@@ -1,7 +1,9 @@
 import json
 import logging
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Form, Request, Response
+import tempfile
+from fastapi import FastAPI, HTTPException, Form, Request, Response, UploadFile, File
+from starlette.concurrency import run_in_threadpool
 from twilio.twiml.messaging_response import MessagingResponse
 import httpx
 import os
@@ -31,7 +33,13 @@ logger.info(f"TWILIO_ACCOUNT_SID configured: {has_account_sid}")
 logger.info(f"TWILIO_API_KEY configured: {has_api_key}")
 logger.info(f"TWILIO_API_SECRET configured: {has_api_secret}")
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(title="Interaction Service (Phase 0 Mock)")
+
+# The Expo web build calls this service straight from the browser, so allow cross-origin requests
+# (same permissive dev policy as Person B's cors()). Tighten allow_origins for production.
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 def get_fixture_path() -> Path:
     # Resolve the path relative to the root of the repo
@@ -75,6 +83,47 @@ async def route_message(normalized: dict) -> tuple[str, bool]:
     if recorded:
         return recorded, True
     return await ask_person_c(normalized), False
+
+
+MAX_AUDIO_BYTES = 10 * 1024 * 1024
+AUDIO_SUFFIXES = {".m4a", ".mp3", ".wav", ".webm", ".ogg", ".oga", ".opus", ".aac", ".mp4", ".3gp", ".amr", ".flac"}
+CONTENT_TYPE_SUFFIX = {
+    "audio/webm": ".webm", "video/webm": ".webm", "audio/ogg": ".ogg", "audio/mp4": ".m4a", "audio/m4a": ".m4a",
+    "audio/x-m4a": ".m4a", "audio/aac": ".aac", "audio/mpeg": ".mp3", "audio/wav": ".wav", "audio/x-wav": ".wav",
+    "audio/3gpp": ".3gp", "audio/amr": ".amr", "audio/flac": ".flac",
+}
+
+
+@app.post("/api/transcribe")
+async def transcribe_upload(audio: UploadFile = File(...)):
+    """Speech-to-text for the app's mic button.
+
+    Runs the SAME Whisper model (transcribe_audio) the WhatsApp voice-note path uses, so an utterance means the same
+    thing in the app and on WhatsApp. It only transcribes: the app then sends the text through its normal message
+    routing (safety check first, then Person B / Person C).
+    """
+    data = await audio.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty audio upload")
+    if len(data) > MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=413, detail="Audio is too large (10 MB max)")
+
+    suffix = Path(audio.filename or "").suffix.lower()
+    if suffix not in AUDIO_SUFFIXES:
+        suffix = CONTENT_TYPE_SUFFIX.get((audio.content_type or "").split(";")[0].strip().lower(), ".m4a")
+
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(data)
+        path = tmp.name
+    try:
+        transcript = await run_in_threadpool(transcribe_audio, path)  # Whisper is CPU-bound: keep the event loop free
+    except Exception as e:
+        logger.error(f"Transcription error: {e}")
+        raise HTTPException(status_code=422, detail="I couldn't understand that audio. Please try again.")
+    finally:
+        if os.path.exists(path):
+            os.remove(path)
+    return {"transcript": transcript}
 
 
 @app.post("/webhooks/whatsapp")

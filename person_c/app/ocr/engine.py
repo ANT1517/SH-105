@@ -15,15 +15,16 @@ class MockOCREngine(OCREngine):
 
 class PaddleOCREngine(OCREngine):
     def __init__(self):
-        # Lazy load to avoid slowing down app startup
-        import os
-        os.environ.setdefault("FLAGS_enable_pir_api", "0")
-        
-        from paddleocr import PaddleOCR
-        self.ocr = PaddleOCR(
-            lang="en",
-            enable_mkldnn=False
-        )
+        # Loaded on the first scan, so the service starts (and every other endpoint works) without paddleocr.
+        self._ocr = None
+
+    @property
+    def ocr(self):
+        if self._ocr is None:
+            os.environ.setdefault("FLAGS_enable_pir_api", "0")
+            from paddleocr import PaddleOCR
+            self._ocr = PaddleOCR(lang="en", enable_mkldnn=False)
+        return self._ocr
 
     def extract_text(self, image_bytes: bytes) -> List[str]:
         tmp_path = None
