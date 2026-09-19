@@ -6,6 +6,18 @@ const { understandText } = require('./groqService');
 const app = express();
 const PORT = process.env.PORT || 8002;
 
+// The Expo web build calls this service straight from the browser, so allow cross-origin requests
+// (same permissive dev policy as Person B's cors()). Set CORS_ALLOW_ORIGIN to tighten it for production.
+app.use((req, res, next) => {
+  res.set({
+    'Access-Control-Allow-Origin': process.env.CORS_ALLOW_ORIGIN || '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+  });
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 app.use(express.json({ limit: '100kb' }));
 
 // Health check endpoint

@@ -1,7 +1,7 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
-const { NlpResponseSchema, UnderstandRequestSchema } = require('./schema');
-const { validateNlpOutput, cleanModelOutput, normalizeInputText } = require('./groqService');
+const { NlpResponseSchema, NlpModelOutputSchema, UnderstandRequestSchema, buildReplyText } = require('./schema');
+const { validateNlpOutput, cleanModelOutput, normalizeInputText, SYSTEM_PROMPT } = require('./groqService');
 
 describe('Saathi NLP Service - Step 4 Test Suite', () => {
 
@@ -26,7 +26,8 @@ describe('Saathi NLP Service - Step 4 Test Suite', () => {
     assert.strictEqual(parsed.transaction.category, 'tailoring');
     assert.strictEqual(parsed.language, 'en');
     assert.strictEqual(parsed.confidence, 0.98);
-    assert.strictEqual(parsed.reply_text, 'Got it. I understood that you earned ₹800 from tailoring.');
+    // reply_text is never model-written: a complete, confident transaction needs no server text at all.
+    assert.strictEqual(parsed.reply_text, '');
   });
 
   // Test 2: Invalid JSON handling
@@ -143,7 +144,7 @@ describe('Saathi NLP Service - Step 4 Test Suite', () => {
     assert.strictEqual(parsed.language, 'te');
     assert.strictEqual(parsed.transaction.amount, 800);
     assert.strictEqual(parsed.transaction.category, 'tailoring');
-    assert.strictEqual(parsed.reply_text, 'అర్థమైంది. నేడు టైలరింగ్ ద్వారా మీకు ₹800 వచ్చినట్లు నమోదు చేశాను.');
+    assert.strictEqual(parsed.reply_text, ''); // model-written Telugu reply is discarded
   });
 
   // Test 7: Hindi result schema validation ("आज सिलाई से 800 रुपये मिले")
@@ -165,7 +166,7 @@ describe('Saathi NLP Service - Step 4 Test Suite', () => {
     assert.strictEqual(parsed.language, 'hi');
     assert.strictEqual(parsed.transaction.amount, 800);
     assert.strictEqual(parsed.transaction.category, 'tailoring');
-    assert.strictEqual(parsed.reply_text, 'समझ गई। आज सिलाई से ₹800 की आमदनी दर्ज कर ली गई है।');
+    assert.strictEqual(parsed.reply_text, ''); // model-written Hindi reply is discarded
   });
 
   // Test 8: English result schema validation ("I got 1200 from pickle sales")
@@ -248,7 +249,10 @@ describe('Saathi NLP Service - Step 4 Test Suite', () => {
     assert.strictEqual(parsed.transaction.amount, null);
     assert.strictEqual(parsed.transaction.category, 'tailoring');
     assert.ok(parsed.confidence < 0.60, 'Confidence should reflect clarification requirement');
-    assert.ok(parsed.reply_text.includes('amount') || parsed.reply_text.includes('How much'));
+    // The clarification prompt is the server's deterministic text, not the model's.
+    assert.strictEqual(parsed.reply_text, buildReplyText(parsed));
+    assert.ok(parsed.reply_text.includes('How much'));
+    assert.ok(!parsed.reply_text.includes('tailoring'));
   });
 
   // Test 12: Ambiguous input / unrelated numbers ("I bought 2 dresses yesterday")
@@ -316,5 +320,96 @@ describe('Saathi NLP Service - Step 4 Test Suite', () => {
     const cleaned = cleanModelOutput(rawWrapped);
     const parsed = JSON.parse(cleaned);
     assert.strictEqual(parsed.intent, 'unknown');
+  });
+
+  // ─── LLM compliance boundary (masterplan s8): only Person C may use an LLM for financial content ─────────
+
+  test('16. Model-written reply text is discarded for EVERY intent (no LLM financial content leaks through)', () => {
+    const intents = ['financial_question', 'goal_question', 'education_question', 'safety_check', 'unknown', 'record_income'];
+    for (const intent of intents) {
+      const out = validateNlpOutput(JSON.stringify({
+        intent,
+        transaction: intent === 'record_income' ? { type: 'income', amount: 800, category: 'tailoring' } : null,
+        language: 'en',
+        confidence: 0.95,
+        reply_text: 'You should move your savings into a fixed deposit and you will earn 7% guaranteed.',
+      }));
+      assert.strictEqual(out.reply_text, '', `intent ${intent} must not carry model-written text`);
+      assert.ok(!JSON.stringify(out).includes('fixed deposit'));
+    }
+  });
+
+  test('17. reply_text is only a deterministic clarification prompt for an incomplete transaction', () => {
+    const incomplete = { intent: 'record_income', transaction: { type: 'income', amount: null, category: 'tailoring' }, confidence: 0.5 };
+    assert.match(buildReplyText({ ...incomplete, language: 'en' }), /How much/);
+    assert.match(buildReplyText({ ...incomplete, language: 'hi' }), /[\u0900-\u097F]/); // Devanagari
+    assert.match(buildReplyText({ ...incomplete, language: 'te' }), /[\u0C00-\u0C7F]/); // Telugu
+    assert.match(buildReplyText({ ...incomplete, language: 'mixed' }), /How much/); // falls back to English
+    // low confidence with an amount is also a clarification; a confident complete transaction is not
+    assert.match(buildReplyText({ intent: 'record_expense', transaction: { type: 'expense', amount: 300, category: 'x' }, language: 'en', confidence: 0.55 }), /How much/);
+    assert.strictEqual(buildReplyText({ intent: 'record_expense', transaction: { type: 'expense', amount: 300, category: 'x' }, language: 'en', confidence: 0.9 }), '');
+    // questions never get server or model text: Person C answers them
+    assert.strictEqual(buildReplyText({ intent: 'goal_question', transaction: null, language: 'en', confidence: 0.9 }), '');
+  });
+
+  test('18. The system prompt no longer asks the model to write replies or answer questions', () => {
+    assert.ok(!/"reply_text"/.test(SYSTEM_PROMPT), 'prompt must not define a reply_text key');
+    assert.ok(!/empathetic/i.test(SYSTEM_PROMPT), 'prompt must not ask for empathetic replies');
+    assert.ok(!/reply_text must/i.test(SYSTEM_PROMPT));
+    assert.match(SYSTEM_PROMPT, /COMPLIANCE BOUNDARY/);
+    assert.match(SYSTEM_PROMPT, /NEVER write a reply/);
+    assert.match(SYSTEM_PROMPT, /must NOT answer questions/);
+  });
+
+  test('18b. The prompt tells the model to always extract a translated category when one is stated', () => {
+    assert.ok(SYSTEM_PROMPT.includes('Category (entity extraction)'));
+    assert.match(SYSTEM_PROMPT, /silai -> tailoring/);
+    assert.match(SYSTEM_PROMPT, /Use null ONLY when the message names no source or purpose/);
+  });
+
+  test('19. The model output contract has no free-text field', () => {
+    assert.deepStrictEqual(Object.keys(NlpModelOutputSchema.shape).sort(), ['confidence', 'intent', 'language', 'transaction']);
+    assert.ok('reply_text' in NlpResponseSchema.shape, 'API response keeps reply_text for compatibility');
+  });
+
+  test('20. End to end through POST /api/nlp/understand: a model that tries to give advice cannot deliver it', async () => {
+    process.env.GROQ_API_KEY = 'test-key-not-real';
+    const { app } = require('./server');
+    const http = require('node:http');
+    const originalFetch = globalThis.fetch;
+    const server = http.createServer(app);
+    await new Promise((resolve) => server.listen(0, resolve));
+    const { port } = server.address();
+    try {
+      globalThis.fetch = async (url, init) => {
+        if (String(url).includes('api.groq.com')) {
+          const sentSystemPrompt = JSON.parse(init.body).messages[0].content;
+          assert.match(sentSystemPrompt, /COMPLIANCE BOUNDARY/);
+          return {
+            ok: true,
+            json: async () => ({
+              choices: [{ message: { content: JSON.stringify({
+                intent: 'goal_question', transaction: null, language: 'en', confidence: 0.93,
+                reply_text: 'Save 2000 every month and put it in a mutual fund; you will hit your goal in 6 months.',
+              }) } }],
+            }),
+          };
+        }
+        return originalFetch(url, init);
+      };
+      const res = await originalFetch(`http://127.0.0.1:${port}/api/nlp/understand`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: "how can I reach my daughter's education goal faster?" }),
+      });
+      assert.strictEqual(res.status, 200);
+      const body = await res.json();
+      assert.deepStrictEqual(Object.keys(body).sort(), ['confidence', 'intent', 'language', 'reply_text', 'transaction']);
+      assert.strictEqual(body.intent, 'goal_question');
+      assert.strictEqual(body.reply_text, '');
+      assert.ok(!JSON.stringify(body).toLowerCase().includes('mutual fund'));
+    } finally {
+      globalThis.fetch = originalFetch;
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });

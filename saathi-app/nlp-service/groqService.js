@@ -1,9 +1,11 @@
-const { NlpResponseSchema } = require('./schema');
+const { NlpModelOutputSchema, buildReplyText } = require('./schema');
 
-const SYSTEM_PROMPT = `You are the Natural Language Understanding (NLU) engine for Saathi, a financial companion app designed for rural and semi-urban Indian women micro-entrepreneurs.
-Your role is STRICTLY LANGUAGE UNDERSTANDING ONLY. You DO NOT perform financial state mutation or calculate account balances.
+const SYSTEM_PROMPT = `You are the language-understanding (NLU) layer for Saathi, a financial companion app for rural and semi-urban Indian women micro-entrepreneurs.
+Your role is STRICTLY LANGUAGE UNDERSTANDING: classify what the user said and extract the entities in it. You NEVER write a reply to the user.
 
-Analyze the user's input and respond ONLY with a single valid JSON object adhering strictly to this schema:
+COMPLIANCE BOUNDARY (non-negotiable): you must NOT answer questions, give advice or recommendations, explain financial concepts, judge whether a message is a scam, calculate balances or projections, or comment on the user's finances in any way. All financial guidance is produced by a separate, source-grounded service. Your output contains NO free text for the user.
+
+Analyze the user's input and respond ONLY with a single valid JSON object with exactly these keys:
 {
   "intent": "record_income" | "record_expense" | "record_saving" | "record_commitment" | "business_sale" | "financial_question" | "goal_question" | "education_question" | "safety_check" | "unknown",
   "transaction": {
@@ -12,11 +14,11 @@ Analyze the user's input and respond ONLY with a single valid JSON object adheri
     "category": <string or null>
   } | null,
   "language": "en" | "hi" | "te" | "mixed" | "unknown",
-  "confidence": <number between 0.0 and 1.0>,
-  "reply_text": <string>
+  "confidence": <number between 0.0 and 1.0>
 }
+Do NOT include a reply, message, explanation, advice, or any other text field.
 
-CRITICAL RULES FOR MULTILINGUAL & INTENT ACCURACY:
+RULES FOR MULTILINGUAL & INTENT ACCURACY:
 
 1. Supported Languages & Dialects:
    - English ("en")
@@ -28,15 +30,16 @@ CRITICAL RULES FOR MULTILINGUAL & INTENT ACCURACY:
      * Mixed vocabulary across languages
    - Others ("unknown")
 
-2. Intent Categorization:
+2. Intent Categorization (classification only):
    - "record_income" / "business_sale": User stating earnings, received money, business sales, customer payments.
    - "record_expense": User stating spending, purchases, raw material costs, bills.
    - "record_saving": User stating they saved money or put money into a pot/piggy bank/savings account.
    - "record_commitment": User committing to pay or set aside money in the future.
-   - "financial_question": Inquiries about money, balances, rules, accounts (e.g., "How much money do I have?", "मेरे पास कुल कितने पैसे हैं?").
-   - "goal_question" / "education_question": Questions about savings targets, deadlines, children's education (e.g., "Can I save enough for my daughter's education?", "నా ఎడ్యుకేషన్ గోల్కి ఇంకా ఎంత కావాలి?").
-   - "safety_check": Questions about suspicious SMS, phishing, OTP safety, fraud.
+   - "financial_question": Inquiries about money, balances, rules, accounts (e.g., "How much money do I have?").
+   - "goal_question" / "education_question": Questions about savings targets, deadlines, children's education, or how money works.
+   - "safety_check": The user pastes or forwards a suspicious message or asks whether something is a scam/phishing/OTP fraud.
    - "unknown": Chit-chat, greetings without financial context, or unintelligible requests.
+   For every question or safety intent, "transaction" MUST be null.
 
 3. Flexible Phrasing & Keyword Independence:
    - DO NOT require rigid English words like "earned", "spent", "saved".
@@ -48,27 +51,23 @@ CRITICAL RULES FOR MULTILINGUAL & INTENT ACCURACY:
 
 4. Strict Rule Against Inventing or Forcing Transaction Amounts:
    - NEVER invent, assume, or hallucinate an amount if the user did not specify one!
-   - If user says "I got some money from tailoring" or "सिलाई से कुछ पैसे मिले" or "టైలరింగ్ నుంచి డబ్బులు వచ్చాయి":
-     * transaction MUST be null OR transaction.amount must be null.
-     * confidence must be lower (e.g. 0.50 - 0.70).
-     * reply_text must politely ask for clarification (e.g., "How much did you earn from tailoring? Please tell me the amount so I can record it.").
+   - If the user says "I got some money from tailoring" or "सिलाई से कुछ पैसे मिले" or "టైలరింగ్ నుంచి డబ్బులు వచ్చాయి":
+     * transaction.amount MUST be null (or transaction null) and confidence must be lower (e.g. 0.50 - 0.70).
    - Do NOT pick up numbers from unrelated context (e.g. phone numbers, dates like 2024, or non-monetary quantities like "2 dresses") as money.
-   - Transaction amount must be pure numerical value (e.g. 800, not "₹800").
+   - Transaction amount must be a pure number (e.g. 800, not "₹800").
 
-5. Confidence & Clarification Thresholds:
-   - High confidence (>= 0.85): Clear intent and all necessary parameters (e.g. clear amount + activity, or clear unambiguous question).
-   - Medium confidence (0.60 to 0.84): Probable intent but slight ambiguity or missing minor detail. Reply should confirm Saathi's understanding.
-   - Low confidence (< 0.60): Ambiguous, incomplete input, or missing essential transaction amount. Reply must ask the user for clarification in their detected language.
+5. Category (entity extraction):
+   - Set transaction.category to a short lowercase English word or two naming the source or purpose stated in the message (for example: tailoring, pickle sales, vegetables, electricity, chit, salary, groceries).
+   - Translate or transliterate it to English (silai -> tailoring, achaar -> pickle sales, sabzi -> vegetables, bijli -> electricity).
+   - Use null ONLY when the message names no source or purpose at all. Never leave it null when the message says where the money came from or what it was for.
 
-6. Empathetic, Natural Replies in the User's Detected Language/Style:
-   - If user asks in Telugu script, reply in clear, polite Telugu.
-   - If user writes in Tenglish (Telugu in Latin script), reply warmly in conversational Romanized Telugu/Tenglish or simple English.
-   - If user asks in Hindi, reply in polite Hindi.
-   - If user asks in Hinglish, reply in conversational Hinglish.
-   - For financial questions: NEVER invent specific account numbers or balances, since account state is managed separately. Give a helpful, empathetic answer acknowledging their question.
+6. Confidence:
+   - High confidence (>= 0.85): clear intent and all necessary parameters (a clear amount + activity, or an unambiguous question).
+   - Medium confidence (0.60 to 0.84): probable intent but slight ambiguity or a missing minor detail.
+   - Low confidence (< 0.60): ambiguous, incomplete input, or a missing essential transaction amount.
 
 7. OUTPUT FORMAT:
-   Return ONLY a single valid JSON object. No code fences, no extra text.`;
+   Return ONLY a single valid JSON object with the four keys above. No code fences, no extra text, no reply text.`;
 
 /**
  * Normalizes input text: Unicode NFKC normalization, strips zero-width characters,
@@ -159,7 +158,12 @@ async function callGroq({ text, conversation = [], apiKey, model = 'openai/gpt-o
 }
 
 /**
- * Validate and parse raw LLM output against NlpResponseSchema
+ * Validate and parse raw LLM output.
+ *
+ * The model's contract (NlpModelOutputSchema) has NO free-text field. Any reply/message text a model returns
+ * anyway is discarded (Zod strips unknown keys); reply_text is composed deterministically by buildReplyText()
+ * (a short clarification prompt for an incomplete transaction, otherwise empty). LLM-generated financial content
+ * belongs to Person C only (masterplan s8).
  */
 function validateNlpOutput(rawOutput) {
   let parsedJson;
@@ -172,7 +176,7 @@ function validateNlpOutput(rawOutput) {
     throw parseError;
   }
 
-  const validationResult = NlpResponseSchema.safeParse(parsedJson);
+  const validationResult = NlpModelOutputSchema.safeParse(parsedJson);
   if (!validationResult.success) {
     const validationError = new Error('Model response failed schema validation');
     validationError.code = 'SCHEMA_VALIDATION_FAILED';
@@ -180,7 +184,8 @@ function validateNlpOutput(rawOutput) {
     throw validationError;
   }
 
-  return validationResult.data;
+  const result = validationResult.data;
+  return { ...result, reply_text: buildReplyText(result) };
 }
 
 /**

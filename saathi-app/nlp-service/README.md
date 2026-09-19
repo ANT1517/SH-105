@@ -78,7 +78,7 @@ npm test
     },
     "language": "hi",
     "confidence": 0.97,
-    "reply_text": "समझ गई। आपने सिलाई से ₹800 कमाए हैं, मैंने यह नोट कर लिया है।"
+    "reply_text": ""
   }
   ```
 - **Error Codes:**
@@ -94,4 +94,12 @@ Response contract defined in `schema.js` using Zod runtime validation:
 - **Languages**: `en`, `hi`, `te`, `mixed`, `unknown`
 - **Transaction**: `{ type: "income" | "expense" | "saving" | "commitment" | "business", amount: number | null, category: string | null } | null`
 - **Confidence**: `number` (0 to 1)
-- **Reply Text**: `string`
+- **Reply Text**: `string`, composed by the server (never by the model). It is a short clarification prompt (in en/hi/te) when a
+  transaction is missing its amount or has low confidence, and an empty string otherwise.
+
+## LLM boundary
+
+Per masterplan section 8, only Person C may use an LLM to generate financial content. This service therefore only
+**understands** input: the model returns `intent`, `transaction`, `language` and `confidence`, and its output schema
+(`NlpModelOutputSchema`) has no free-text field. Anything else a model returns is discarded. Questions, goals, education and
+safety intents are answered by Person C (see `src/services/messageRouter.js` in the app).
