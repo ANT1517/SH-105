@@ -3,7 +3,8 @@ import FormModal from '../components/FormModal';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
-import { theme } from '../theme';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, radius, shadows, typography } from '../theme';
 import { createGoal, getGoals } from '../services/personBClient.js';
 import { buildGoalViewModel } from '../services/viewModels.js';
 import { useLiveData } from '../hooks/useLiveData';
@@ -29,15 +30,18 @@ export default function LakshyaScreen() {
       >
         {status === 'loading' && (
           <View style={styles.stateBox}>
-            <ActivityIndicator size="large" color={theme.colors.forestInk} />
+            <ActivityIndicator size="large" color={colors.forestInk} />
             <Text style={styles.stateText}>{t('lakshya.loadingGoal')}</Text>
           </View>
         )}
 
         {status === 'error' && (
-          <View style={styles.stateBox} accessibilityRole="alert">
-            <Text style={styles.stateTitle}>{t('lakshya.couldNotLoad')}</Text>
-            <Text style={styles.stateText}>{error && error.message ? error.message : t('lakshya.checkConnection')}</Text>
+          <View style={styles.errorBox} accessibilityRole="alert">
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="alert-circle" size={18} color={colors.warningText} />
+              <Text style={styles.errorTitle}>{t('lakshya.couldNotLoad')}</Text>
+            </View>
+            <Text style={styles.errorText}>{error && error.message ? error.message : t('lakshya.checkConnection')}</Text>
             <TouchableOpacity style={styles.retryButton} onPress={reload} activeOpacity={0.8}>
               <Text style={styles.retryButtonText}>{t('common.tryAgain')}</Text>
             </TouchableOpacity>
@@ -48,6 +52,7 @@ export default function LakshyaScreen() {
           <View style={styles.goalCard}>
             <View style={styles.goalCardHeader}>
               <View style={styles.goalBadge}>
+                <Ionicons name="flag-outline" size={12} color={colors.forestInk} style={{ marginRight: 4 }} />
                 <Text style={styles.goalBadgeText}>{t('lakshya.goalBadge')}</Text>
               </View>
               <Text style={styles.goalPercentText}>{goal.pct}% {t('lakshya.done')}</Text>
@@ -60,7 +65,7 @@ export default function LakshyaScreen() {
 
             {/* Progress Bar */}
             <View style={styles.progressBarTrack}>
-              <View style={[styles.progressBarFill, { width: `${goal.pct}%` }]} />
+              <View style={[styles.progressBarFill, { width: `${Math.min(goal.pct, 100)}%` }]} />
             </View>
 
             <View style={styles.metricsRow}>
@@ -68,7 +73,7 @@ export default function LakshyaScreen() {
                 <Text style={styles.metricLabel}>{t('lakshya.saved')}</Text>
                 <Text style={styles.metricValue}>{goal.savedText}</Text>
               </View>
-              <View style={styles.metricItem}>
+              <View style={[styles.metricItem, styles.metricDivider]}>
                 <Text style={styles.metricLabel}>{t('lakshya.target')}</Text>
                 <Text style={styles.metricValue}>{goal.targetText}</Text>
               </View>
@@ -84,8 +89,9 @@ export default function LakshyaScreen() {
           </View>
         )}
 
-        <TouchableOpacity style={styles.retryButton} onPress={() => setFormOpen(true)} activeOpacity={0.8}>
-          <Text style={styles.retryButtonText}>{goal ? t('lakshya.setNewGoal') : t('lakshya.addGoal')}</Text>
+        <TouchableOpacity style={styles.actionButton} onPress={() => setFormOpen(true)} activeOpacity={0.8}>
+          <Ionicons name={goal ? 'create-outline' : 'add-circle-outline'} size={18} color={colors.cream} style={{ marginRight: 6 }} />
+          <Text style={styles.actionButtonText}>{goal ? t('lakshya.setNewGoal') : t('lakshya.addGoal')}</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -112,54 +118,68 @@ export default function LakshyaScreen() {
 
 const styles = StyleSheet.create({
   stateBox: {
-    backgroundColor: theme.colors.panelKeylime,
+    backgroundColor: colors.panelKeylime,
     borderWidth: 1,
-    borderColor: theme.colors.hairlineMist,
-    borderRadius: theme.radius.card,
-    padding: 20,
-    gap: 10,
+    borderColor: colors.keylimeBorder,
+    borderRadius: radius.card,
+    padding: 24,
+    gap: 12,
     alignItems: 'center',
   },
-  stateTitle: { fontSize: 16, fontWeight: '700', color: theme.colors.forestInk },
-  stateText: { fontSize: 13, color: theme.colors.charcoal, textAlign: 'center' },
-  retryButton: { backgroundColor: theme.colors.forestInk, paddingHorizontal: 20, paddingVertical: 10, borderRadius: theme.radius.badge },
-  retryButtonText: { color: theme.colors.paperCream, fontWeight: '700', fontSize: 14 },
+  stateText: { ...typography.bodyMd, color: colors.charcoal, textAlign: 'center' },
+  errorBox: {
+    backgroundColor: colors.warningBg,
+    borderWidth: 1,
+    borderColor: colors.warningBorder,
+    borderRadius: radius.card,
+    padding: 18,
+    gap: 8,
+  },
+  errorTitle: { fontSize: 14, fontWeight: '700', color: colors.warningText },
+  errorText: { fontSize: 13, color: colors.warningText, lineHeight: 18 },
+  retryButton: {
+    backgroundColor: colors.forestInk,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: radius.button,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  retryButtonText: { color: colors.cream, fontWeight: '700', fontSize: 13 },
   safeArea: {
     flex: 1,
-    backgroundColor: theme.colors.paperCream,
+    backgroundColor: colors.cream,
   },
   scrollView: {
     flex: 1,
-    backgroundColor: theme.colors.paperCream,
-  },
-  headerBar: {
-    minHeight: 56,
-    backgroundColor: theme.colors.paperCream,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.panelKeylime,
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: theme.colors.forestInk,
-    letterSpacing: 0.3,
+    backgroundColor: colors.cream,
   },
   contentContainer: {
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 24, // base; insets.bottom added dynamically above
     gap: 16,
   },
+  headerBar: {
+    height: 56,
+    backgroundColor: colors.cream,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderMist,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  headerTitle: {
+    ...typography.headlineLg,
+    color: colors.forestInk,
+  },
+
   goalCard: {
-    backgroundColor: theme.colors.panelKeylime,
+    backgroundColor: colors.white,
     borderWidth: 1,
-    borderColor: theme.colors.hairlineMist,
-    borderRadius: theme.radius.card,
+    borderColor: colors.border,
+    borderRadius: radius.card,
     padding: 20,
     gap: 12,
+    ...shadows.subtle,
   },
   goalCardHeader: {
     flexDirection: 'row',
@@ -167,72 +187,88 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   goalBadge: {
-    backgroundColor: theme.colors.paperCream,
-    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.panelKeylime,
     paddingVertical: 4,
-    borderRadius: theme.radius.badge,
-    borderWidth: 1,
-    borderColor: theme.colors.hairlineMist,
+    paddingHorizontal: 10,
+    borderRadius: radius.badge,
   },
   goalBadgeText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
-    color: theme.colors.forestInk,
+    color: colors.forestInk,
   },
   goalPercentText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
-    color: theme.colors.forestInk,
+    color: colors.forestInk,
   },
   goalMainHeading: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: theme.colors.forestInk,
+    ...typography.headlineMd,
+    color: colors.forestInk,
   },
   goalTargetNotice: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: theme.colors.charcoal,
+    ...typography.bodySm,
+    color: colors.mutedText,
+    marginTop: -4,
   },
   progressBarTrack: {
     height: 8,
-    backgroundColor: theme.colors.paperCream,
-    borderRadius: theme.radius.full,
+    backgroundColor: colors.surfaceContainer,
+    borderRadius: radius.pill,
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: theme.colors.forestInk,
-    borderRadius: theme.radius.full,
+    backgroundColor: colors.forestInk,
+    borderRadius: radius.pill,
   },
   metricsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: theme.colors.paperCream,
-    borderRadius: theme.radius.sm,
+    backgroundColor: colors.surfaceContainerLow,
+    borderRadius: radius.input,
     padding: 12,
     borderWidth: 1,
-    borderColor: theme.colors.hairlineMist,
+    borderColor: colors.border,
   },
   metricItem: {
-    alignItems: 'center',
     flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  metricDivider: {
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: colors.border,
   },
   metricLabel: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: theme.colors.mutedText,
-    marginBottom: 2,
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.mutedText,
   },
   metricValue: {
     fontSize: 14,
     fontWeight: '700',
-    color: theme.colors.forestInk,
+    color: colors.forestInk,
   },
   reassuranceText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: theme.colors.charcoal,
+    ...typography.bodySm,
+    color: colors.forestInkSub,
     lineHeight: 18,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.forestInk,
+    borderRadius: radius.button,
+    paddingVertical: 14,
+    ...shadows.card,
+  },
+  actionButtonText: {
+    color: colors.cream,
+    fontWeight: '700',
+    fontSize: 14,
   },
 });

@@ -4,49 +4,64 @@ export const colors = {
   // Primary dark green
   primary: '#0F3E17',
   forestInk: '#0F3E17',
-  forestInkSub: '#264D2C',
-  forestSubtle: '#455E49',
+  forestInkSub: '#1B4D24',
+  forestSubtle: '#3A5C3F',
 
   // Light green & botanical surfaces
   panelKeylime: '#E1F4DF',
-  keylimeWash: '#E1F4DF',
+  keylimeWash: '#EBF7EA',
   panelMint: '#CFE7D3',
-  mintVeil: '#CFE7D3',
+  mintVeil: '#D8EDE0',
   panelSage: '#B1DBB8',
-  sageMist: '#B1DBB8',
+  sageMist: '#BDE0C3',
 
   // Canvas / card background
   background: '#FFFEFC',
   paperCream: '#FFFEFC',
   cream: '#FFFEFC',
-  cardBackground: '#FFFEFC',
-  surfaceContainerLow: '#F4F3F1',
+  cardBackground: '#FFFFFF',
+  surfaceContainerLow: '#F8F7F4',
+  surfaceContainer: '#F2F0EC',
   white: '#FFFFFF',
 
   // Text colors
-  text: '#1A1C1B',
-  onSurface: '#1A1C1B',
-  charcoal: '#222222',
+  text: '#191C1A',
+  onSurface: '#191C1A',
+  charcoal: '#212522',
 
   // Muted text
-  mutedText: '#424940',
-  onSurfaceVariant: '#424940',
-  textSubtle: '#455E49',
+  mutedText: '#4A544C',
+  onSurfaceVariant: '#4A544C',
+  textSubtle: '#5C675F',
+  textTertiary: '#7D8880',
 
   // Accent & Caution (Slate counter-panel)
   accent: '#B6CED5',
   panelSlate: '#B6CED5',
-  slateHush: '#B6CED5',
-  slateText: '#1E3840',
+  slateHush: '#C7DAE0',
+  slateText: '#1A333B',
+
+  // Functional feedback
+  errorBg: '#FDE8E8',
+  errorBorder: '#F8B4B4',
+  errorText: '#9B1C1C',
+  warningBg: '#FEF3C7',
+  warningBorder: '#FDE68A',
+  warningText: '#92400E',
+  successBg: '#DEF7EC',
+  successBorder: '#BCF0DA',
+  successText: '#03543F',
 
   // Borders & Dividers
-  border: '#EFEEEB',
-  borderMist: '#EFEEEB',
-  hairlineMist: '#E5E3DC',
-  keylimeBorder: '#D0ECCB',
+  border: '#E8E6E0',
+  borderMist: '#E8E6E0',
+  hairlineMist: '#E0DDD5',
+  keylimeBorder: '#C8EDCA',
+  sageBorder: '#9AC9A2',
 };
 
 export const spacing = {
+  xxs: 2,
   xs: 4,
   sm: 8,
   md: 12,
@@ -54,80 +69,130 @@ export const spacing = {
   lg: 20,
   xl: 24,
   xxl: 32,
-  cardPadding: 20,
+  xxxl: 40,
+  cardPadding: 18,
   screenPadding: 16,
 };
 
 export const radius = {
+  xs: 4,
   sm: 6,
   md: 10,
-  card: 14,
-  button: 14,
+  card: 16,
+  button: 12,
+  input: 10,
   pill: 999,
   badge: 999,
   full: 9999,
 };
 
+export const shadows = {
+  subtle: {
+    shadowColor: '#0F3E17',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  card: {
+    shadowColor: '#0F3E17',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  modal: {
+    shadowColor: '#0F3E17',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+};
+
 export const typography = {
-  display: {
-    fontFamily: 'Playfair Display',
-    fontSize: 36,
-    fontWeight: '300',
-    lineHeight: 44,
-  },
-  headlineLg: {
-    fontFamily: 'Plus Jakarta Sans',
-    fontSize: 24,
+  heroAmount: {
+    fontSize: 34,
     fontWeight: '700',
-    lineHeight: 32,
+    lineHeight: 40,
+    color: colors.forestInk,
+    letterSpacing: -0.5,
   },
-  headlineMd: {
-    fontFamily: 'Plus Jakarta Sans',
-    fontSize: 20,
+  cardAmount: {
+    fontSize: 22,
     fontWeight: '700',
     lineHeight: 28,
+    color: colors.forestInk,
+    letterSpacing: -0.3,
+  },
+  amountSm: {
+    fontSize: 16,
+    fontWeight: '700',
+    lineHeight: 22,
+    color: colors.forestInk,
+  },
+  display: {
+    fontSize: 32,
+    fontWeight: '700',
+    lineHeight: 38,
+    color: colors.forestInk,
+  },
+  headlineLg: {
+    fontSize: 22,
+    fontWeight: '700',
+    lineHeight: 28,
+    color: colors.forestInk,
+    letterSpacing: 0.2,
+  },
+  headlineMd: {
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 24,
+    color: colors.forestInk,
   },
   headlineSm: {
-    fontFamily: 'Plus Jakarta Sans',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
-    lineHeight: 24,
+    lineHeight: 22,
+    color: colors.forestInk,
   },
   bodyLg: {
-    fontFamily: 'Plus Jakarta Sans',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '500',
-    lineHeight: 24,
+    lineHeight: 22,
+    color: colors.charcoal,
   },
   bodyMd: {
-    fontFamily: 'Plus Jakarta Sans',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '400',
     lineHeight: 20,
+    color: colors.charcoal,
   },
   bodySm: {
-    fontFamily: 'Plus Jakarta Sans',
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '400',
     lineHeight: 18,
+    color: colors.mutedText,
   },
   labelLg: {
-    fontFamily: 'Plus Jakarta Sans',
     fontSize: 14,
     fontWeight: '600',
     lineHeight: 20,
+    color: colors.forestInk,
   },
   labelMd: {
-    fontFamily: 'Plus Jakarta Sans',
     fontSize: 12,
     fontWeight: '600',
     lineHeight: 16,
+    color: colors.forestInk,
   },
   labelSm: {
-    fontFamily: 'Plus Jakarta Sans',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     lineHeight: 14,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: colors.forestInk,
   },
 };
 
@@ -135,6 +200,7 @@ export const theme = {
   colors,
   spacing,
   radius,
+  shadows,
   typography,
 };
 

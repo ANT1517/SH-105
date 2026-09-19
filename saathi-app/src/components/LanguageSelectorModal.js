@@ -7,8 +7,9 @@ import {
   View,
   Pressable,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../context/LanguageContext';
-import { colors } from '../theme';
+import { colors, radius, shadows, typography } from '../theme';
 
 export default function LanguageSelectorModal({ visible, onClose }) {
   const { language, setLanguage, languages, t } = useLanguage();
@@ -53,7 +54,11 @@ export default function LanguageSelectorModal({ visible, onClose }) {
                   <Text style={[styles.langLabel, isSelected && styles.langLabelSelected]}>
                     {item.label}
                   </Text>
-                  {isSelected && <Text style={styles.checkIcon}>✓</Text>}
+                  {isSelected && (
+                    <View style={styles.checkCircle}>
+                      <Ionicons name="checkmark" size={13} color={colors.cream} />
+                    </View>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -77,7 +82,7 @@ export default function LanguageSelectorModal({ visible, onClose }) {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(15, 62, 23, 0.4)',
+    backgroundColor: 'rgba(15, 62, 23, 0.45)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
@@ -85,32 +90,27 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 340,
-    backgroundColor: colors.paperCream,
+    backgroundColor: colors.cream,
     borderRadius: 20,
     padding: 22,
     borderWidth: 1,
-    borderColor: colors.panelMint,
-    shadowColor: colors.forestInk,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 14,
-    elevation: 8,
+    borderColor: colors.border,
+    ...shadows.modal,
   },
   header: {
-    marginBottom: 18,
+    marginBottom: 16,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '700',
+    ...typography.headlineMd,
     color: colors.forestInk,
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 13,
+    ...typography.bodySm,
     color: colors.mutedText,
   },
   list: {
-    gap: 10,
+    gap: 8,
     marginBottom: 18,
   },
   langOption: {
@@ -118,41 +118,45 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 14,
+    borderRadius: radius.button,
     backgroundColor: colors.surfaceContainerLow,
     borderWidth: 1.5,
-    borderColor: 'transparent',
+    borderColor: colors.border,
   },
   langOptionSelected: {
     backgroundColor: colors.panelKeylime,
     borderColor: colors.forestInk,
   },
   langLabel: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    color: colors.text,
+    color: colors.charcoal,
   },
   langLabelSelected: {
     color: colors.forestInk,
     fontWeight: '700',
   },
-  checkIcon: {
-    fontSize: 18,
-    color: colors.forestInk,
-    fontWeight: '700',
+  checkCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: radius.pill,
+    backgroundColor: colors.forestInk,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   closeButton: {
-    minHeight: 44,
-    justifyContent: 'center',
+    paddingVertical: 12,
     alignItems: 'center',
-    borderRadius: 12,
-    backgroundColor: colors.surfaceContainerLow,
+    borderRadius: radius.button,
+    backgroundColor: colors.panelKeylime,
+    borderWidth: 1,
+    borderColor: colors.keylimeBorder,
   },
   closeButtonText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: colors.mutedText,
+    fontWeight: '700',
+    color: colors.forestInk,
   },
 });

@@ -20,6 +20,8 @@ import { formatINR } from '../services/viewModels.js';
 import { guessAudioMeta, transcribeAudio } from '../services/voiceClient.js';
 import { appendAudio } from '../services/voiceRuntime'; // platform adapter: a File on native, a Blob on web
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, radius, shadows, typography } from '../theme';
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
 const C = {
@@ -169,7 +171,7 @@ export default function ChatScreen() {
             {item.type === 'voice' ? (
               <View style={styles.voiceContainer}>
                 <View style={styles.voiceBadge}>
-                  <Text style={styles.waveformIcon}>〰️🎙️</Text>
+                  <Ionicons name="mic" size={13} color={colors.cream} style={{ marginRight: 4 }} />
                   {item.duration ? <Text style={styles.voiceDuration}>{item.duration}</Text> : null}
                 </View>
                 <Text style={styles.userBubbleText}>"{item.text}"</Text>
@@ -192,12 +194,13 @@ export default function ChatScreen() {
             <View style={styles.confirmCard}>
               <View style={styles.confirmCardTop}>
                 <View style={styles.confirmPill}>
+                  <Ionicons name="checkmark-circle" size={13} color={colors.forestInk} style={{ marginRight: 4 }} />
                   <Text style={styles.confirmPillText}>
-                    ✅ {t(`pots.${item.recorded.pot}.name`, { defaultValue: item.recorded.pot.charAt(0).toUpperCase() + item.recorded.pot.slice(1).replace(/_/g, ' ') })} {t('transactions.pot', { name: '', defaultValue: 'Pot' }).trim()}
+                    {t(`pots.${item.recorded.pot}.name`, { defaultValue: item.recorded.pot.charAt(0).toUpperCase() + item.recorded.pot.slice(1).replace(/_/g, ' ') })} {t('transactions.pot', { name: '', defaultValue: 'Pot' }).trim()}
                   </Text>
                 </View>
                 <Text style={styles.confirmAmount}>
-                  {['expense', 'commitment'].includes(item.recorded.type) ? '-' : '+'}{formatINR(item.recorded.amount)}
+                  {['expense', 'commitment'].includes(item.recorded.type) ? '−' : '+'}{formatINR(item.recorded.amount)}
                 </Text>
               </View>
               <Text style={styles.confirmLine}>
@@ -424,7 +427,7 @@ export default function ChatScreen() {
               {status === 'error' && errorMessage && (
                 <View style={styles.errorContainer}>
                   <View style={styles.errorBubble}>
-                    <Text style={styles.errorIcon}>⚠️</Text>
+                    <Ionicons name="alert-circle-outline" size={16} color={colors.errorText} />
                     <Text style={styles.errorText}>{errorMessage}</Text>
                   </View>
                 </View>
@@ -439,14 +442,14 @@ export default function ChatScreen() {
             <TextInput
               style={styles.textInput}
               placeholder={voiceState === 'recording' ? t('chat.listening') : t('chat.placeholder')}
-              placeholderTextColor="#666666"
+              placeholderTextColor="#7D8880"
               value={inputText}
               onChangeText={setInputText}
               onSubmitEditing={handleSend}
             />
             {inputText.trim().length > 0 ? (
               <TouchableOpacity style={styles.actionButton} onPress={handleSend} activeOpacity={0.8}>
-                <Text style={styles.actionButtonIcon}>➔</Text>
+                <Ionicons name="arrow-up" size={18} color={colors.cream} />
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
@@ -457,9 +460,9 @@ export default function ChatScreen() {
                 accessibilityLabel={voiceState === 'recording' ? t('chat.stopRecording') : t('chat.speakToSaathi')}
               >
                 {voiceState === 'transcribing' ? (
-                  <ActivityIndicator size="small" color={C.cream} />
+                  <ActivityIndicator size="small" color={colors.cream} />
                 ) : (
-                  <Text style={styles.actionButtonIcon}>{voiceState === 'recording' ? '⏹' : '🎙️'}</Text>
+                  <Ionicons name={voiceState === 'recording' ? 'stop' : 'mic'} size={18} color={colors.cream} />
                 )}
               </TouchableOpacity>
             )}

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
+import { Ionicons } from '@expo/vector-icons';
 import { MEERA_FIXTURE } from '../api/fixture';
 import { getFinancialState } from '../services/personBClient.js';
 import { buildPotsViewModel, fixtureToFinancialState } from '../services/viewModels.js';
@@ -19,20 +20,7 @@ import { OFFLINE_BANNER } from '../services/liveData.js';
 import { useLiveData } from '../hooks/useLiveData';
 import LanguageSelectorModal from '../components/LanguageSelectorModal';
 import { useLanguage } from '../context/LanguageContext';
-
-// ─── Design tokens (Botanical Greenhouse) ───────────────────────────────────
-const C = {
-  forestInk:   '#0F3E17',
-  cream:       '#FFFEFC',
-  keylime:     '#E1F4DF',
-  mint:        '#CFE7D3',
-  sage:        '#B1DBB8',
-  slate:       '#B6CED5',
-  charcoal:    '#222222',
-  white:       '#FFFFFF',
-  border:      '#EFEEEB',
-  hairline:    '#E5E3DC',
-};
+import { colors, radius, shadows, typography } from '../theme';
 
 // Live data from Person B (GET /api/financial-state). The bundled fixture is ONLY an explicit offline fallback,
 // used if the live call fails, and the screen says so with a banner. It is never the default.
@@ -49,9 +37,9 @@ export default function MoneyPotMapScreen() {
   if (status === 'loading' || !state) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="dark-content" backgroundColor={C.cream} />
+        <StatusBar barStyle="dark-content" backgroundColor={colors.cream} />
         <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color={C.forestInk} />
+          <ActivityIndicator size="large" color={colors.forestInk} />
           <Text style={styles.loadingText}>{t('moneyPotMap.loadingPots')}</Text>
         </View>
       </SafeAreaView>
@@ -63,7 +51,7 @@ export default function MoneyPotMapScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor={C.cream} />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.cream} />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
@@ -72,14 +60,17 @@ export default function MoneyPotMapScreen() {
 
         {status === 'offline' && (
           <View style={styles.offlineBanner} accessibilityRole="alert">
-            <Text style={styles.offlineBannerText}>{OFFLINE_BANNER}</Text>
+            <View style={styles.offlineHeader}>
+              <Ionicons name="cloud-offline-outline" size={16} color={colors.warningText} />
+              <Text style={styles.offlineBannerText}>{OFFLINE_BANNER}</Text>
+            </View>
             {error && error.message ? <Text style={styles.offlineBannerDetail}>{error.message}</Text> : null}
           </View>
         )}
 
         {/* ── 1. HEADER ROW ──────────────────────────────────────────── */}
         <View style={styles.headerRow}>
-          <View>
+          <View style={styles.headerTitleWrap}>
             <Text style={styles.greetingLabel}>{t('moneyPotMap.greetingEyebrow')}</Text>
             <Text style={styles.greetingName}>{t('moneyPotMap.greetingTitle')}</Text>
           </View>
@@ -92,11 +83,21 @@ export default function MoneyPotMapScreen() {
               accessibilityRole="button"
               accessibilityLabel={`${t('common.language')}, ${languageLabel}`}
             >
-              <Text style={styles.langBtnLabel}>{t('common.language')} ▾</Text>
-              <Text style={styles.langBtnCurrent}>{languageLabel}</Text>
+              <Text style={styles.langBtnLabel}>{t('common.language')}</Text>
+              <View style={styles.langCurrentRow}>
+                <Text style={styles.langBtnCurrent}>{languageLabel}</Text>
+                <Ionicons name="chevron-down" size={12} color={colors.forestInk} style={{ marginLeft: 3 }} />
+              </View>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.bellBtn} activeOpacity={0.7} onPress={() => router.push('/explore')}>
-              <Text style={styles.bellIcon}>🔔</Text>
+
+            <TouchableOpacity
+              style={styles.bellBtn}
+              activeOpacity={0.7}
+              onPress={() => router.push('/explore')}
+              accessibilityRole="button"
+              accessibilityLabel={t('tabs.sahayata')}
+            >
+              <Ionicons name="notifications-outline" size={19} color={colors.forestInk} />
             </TouchableOpacity>
           </View>
         </View>
@@ -112,6 +113,7 @@ export default function MoneyPotMapScreen() {
         {/* ── 3. SAFE & TRUSTED PILL ──────────────────────────────────── */}
         <View style={styles.safePillRow}>
           <View style={styles.safePill}>
+            <Ionicons name="shield-checkmark-outline" size={14} color={colors.forestInk} style={{ marginRight: 6 }} />
             <Text style={styles.safePillText}>{t('moneyPotMap.safePill')}</Text>
           </View>
         </View>
@@ -124,13 +126,16 @@ export default function MoneyPotMapScreen() {
 
         <View style={styles.potsGrid}>
           {vm.pots.map((pot) => (
-            <TouchableOpacity key={pot.id} style={styles.potCard} activeOpacity={0.8} onPress={() => Alert.alert(pot.name, `${pot.subLabel}\n${pot.amount}\n${pot.status}`)}>
+            <TouchableOpacity
+              key={pot.id}
+              style={styles.potCard}
+              activeOpacity={0.75}
+              onPress={() => Alert.alert(pot.name, `${pot.subLabel}\n${pot.amount}\n${pot.status}`)}
+            >
               <View style={styles.potCardTop}>
-                <Text style={styles.potName}>{pot.name}</Text>
-                {/* Speaker icon — tap for audio explanation */}
-                
+                <Text style={styles.potName} numberOfLines={1}>{pot.name}</Text>
               </View>
-              <Text style={styles.potSubLabel}>{pot.subLabel}</Text>
+              <Text style={styles.potSubLabel} numberOfLines={1}>{pot.subLabel}</Text>
               <Text style={styles.potAmount}>{pot.amount}</Text>
               <View style={styles.potStatusPill}>
                 <Text style={styles.potStatusText}>{pot.status}</Text>
@@ -144,7 +149,8 @@ export default function MoneyPotMapScreen() {
           <View style={styles.chitHeaderRow}>
             <Text style={styles.chitName}>{chit.name}</Text>
             <View style={styles.chitLockBadge}>
-              <Text style={styles.chitLockText}>🔒 {t('moneyPotMap.chitLocked')}</Text>
+              <Ionicons name="lock-closed" size={11} color={colors.forestInk} style={{ marginRight: 4 }} />
+              <Text style={styles.chitLockText}>{t('moneyPotMap.chitLocked')}</Text>
             </View>
           </View>
           <Text style={styles.chitAmount}>{chit.amount}</Text>
@@ -154,13 +160,12 @@ export default function MoneyPotMapScreen() {
         {/* ── 6. SAATHI'S GENTLE NOTE ─────────────────────────────────── */}
         <View style={styles.gentleNoteCard}>
           <View style={styles.gentleNoteHeader}>
-            <Text style={styles.gentleNoteIcon}>💬</Text>
+            <Ionicons name="sparkles" size={15} color={colors.forestInk} />
             <Text style={styles.gentleNoteHeading}>{t('moneyPotMap.gentleNoteHeading')}</Text>
           </View>
           <Text style={styles.gentleNoteBody}>
             {t('moneyPotMap.gentleNoteBody', { amount: chit.amount })}
           </Text>
-          
         </View>
 
         {/* ── 7. GOAL CARD (live: Person B goal) ──────────────────────── */}
@@ -168,6 +173,7 @@ export default function MoneyPotMapScreen() {
           <View style={styles.goalCard}>
             <View style={styles.goalCardTop}>
               <View style={styles.goalBadge}>
+                <Ionicons name="flag-outline" size={12} color={colors.forestInk} style={{ marginRight: 4 }} />
                 <Text style={styles.goalBadgeText}>{t('moneyPotMap.goalBadge')}</Text>
               </View>
               <Text style={styles.goalPct}>{t('moneyPotMap.goalDone', { pct: goal.pct })}</Text>
@@ -175,7 +181,7 @@ export default function MoneyPotMapScreen() {
             <Text style={styles.goalTitle}>{goal.title}</Text>
 
             <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${goal.pct}%` }]} />
+              <View style={[styles.progressFill, { width: `${Math.min(goal.pct, 100)}%` }]} />
             </View>
 
             <View style={styles.goalMetrics}>
@@ -232,99 +238,215 @@ export default function MoneyPotMapScreen() {
 // ─── Styles ────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  loadingText: { fontSize: 14, color: C.charcoal },
-  offlineBanner: { backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A', borderRadius: 12, padding: 12, gap: 4 },
-  offlineBannerText: { fontSize: 13, fontWeight: '700', color: '#92400E' },
-  offlineBannerDetail: { fontSize: 11, color: '#92400E', opacity: 0.8 },
-  safeArea:  { flex: 1, backgroundColor: C.cream },
-  scroll:    { flex: 1, backgroundColor: C.cream },
-  content:   { paddingHorizontal: 16, paddingTop: 12, gap: 16 },
+  loadingText: { ...typography.bodyMd, color: colors.charcoal },
+  offlineBanner: {
+    backgroundColor: colors.warningBg,
+    borderWidth: 1,
+    borderColor: colors.warningBorder,
+    borderRadius: radius.card,
+    padding: 12,
+    gap: 4,
+  },
+  offlineHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  offlineBannerText: { fontSize: 13, fontWeight: '700', color: colors.warningText },
+  offlineBannerDetail: { fontSize: 11, color: colors.warningText, opacity: 0.85, paddingLeft: 22 },
+  safeArea:  { flex: 1, backgroundColor: colors.cream },
+  scroll:    { flex: 1, backgroundColor: colors.cream },
+  content:   { paddingHorizontal: 16, paddingTop: 10, gap: 14 },
 
   // 1. Header
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 8 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
+  headerTitleWrap: { flex: 1, justifyContent: 'center' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  greetingLabel: { fontSize: 11, fontWeight: '600', color: C.forestInk, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 },
-  greetingName:  { fontSize: 18, fontWeight: '700', color: C.forestInk },
-  langBtn:  { minHeight: 44, paddingVertical: 6, paddingHorizontal: 12, backgroundColor: C.keylime, borderRadius: 10, borderWidth: 1, borderColor: '#C8EDCA', justifyContent: 'center' },
-  langBtnLabel: { fontSize: 10, fontWeight: '600', color: C.forestInk, opacity: 0.8, letterSpacing: 0.3 },
-  langBtnCurrent: { fontSize: 13, fontWeight: '700', color: C.forestInk },
-  bellBtn:  { minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'center', backgroundColor: C.keylime, borderRadius: 999 },
-  bellIcon: { fontSize: 16 },
+  greetingLabel: { ...typography.labelSm, color: colors.forestSubtle, marginBottom: 2 },
+  greetingName:  { ...typography.headlineMd, color: colors.forestInk },
+  langBtn:  {
+    minHeight: 40,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    backgroundColor: colors.panelKeylime,
+    borderRadius: radius.input,
+    borderWidth: 1,
+    borderColor: colors.keylimeBorder,
+    justifyContent: 'center',
+  },
+  langBtnLabel: { fontSize: 10, fontWeight: '600', color: colors.forestInk, opacity: 0.75, letterSpacing: 0.2 },
+  langCurrentRow: { flexDirection: 'row', alignItems: 'center' },
+  langBtnCurrent: { fontSize: 13, fontWeight: '700', color: colors.forestInk },
+  bellBtn:  {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.panelKeylime,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.keylimeBorder,
+  },
 
   // 2. Hero
-  heroCard: { backgroundColor: C.sage, borderRadius: 14, padding: 24, gap: 6 },
-  heroEyebrow: { fontSize: 10, fontWeight: '600', color: C.forestInk, letterSpacing: 1.2, textTransform: 'uppercase' },
-  heroLabel:   { fontSize: 13, fontWeight: '500', color: C.charcoal },
-  heroAmount:  { fontSize: 36, fontWeight: '700', color: C.forestInk, marginVertical: 4 },
-  heroSubtext: { fontSize: 13, fontWeight: '400', color: C.charcoal, lineHeight: 18 },
+  heroCard: {
+    backgroundColor: colors.panelSage,
+    borderRadius: radius.card,
+    padding: 22,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#A4D1AC',
+    ...shadows.card,
+  },
+  heroEyebrow: { ...typography.labelSm, color: colors.forestInk, letterSpacing: 1.1 },
+  heroLabel:   { ...typography.bodySm, fontWeight: '500', color: colors.charcoal },
+  heroAmount:  { ...typography.heroAmount, color: colors.forestInk, marginVertical: 4 },
+  heroSubtext: { ...typography.bodySm, color: colors.forestInk, opacity: 0.9, lineHeight: 18 },
 
   // 3. Safe pill
   safePillRow: { alignItems: 'flex-start' },
-  safePill:    { backgroundColor: C.keylime, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 16, borderWidth: 1, borderColor: '#C8EDCA' },
-  safePillText:{ fontSize: 13, fontWeight: '600', color: C.forestInk },
+  safePill:    {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.panelKeylime,
+    borderRadius: radius.pill,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: colors.keylimeBorder,
+  },
+  safePillText:{ fontSize: 12, fontWeight: '600', color: colors.forestInk },
 
   // 4. Pots
-  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 4 },
-  sectionTitle:    { fontSize: 16, fontWeight: '700', color: C.forestInk },
-  sectionSubtitle: { fontSize: 12, fontWeight: '500', color: C.charcoal, opacity: 0.6 },
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 2 },
+  sectionTitle:    { ...typography.headlineSm, color: colors.forestInk },
+  sectionSubtitle: { ...typography.bodySm, color: colors.mutedText },
   potsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  potCard: { width: '48%', backgroundColor: C.white, borderWidth: 1, borderColor: C.sage, borderRadius: 14, padding: 16, gap: 4 },
+  potCard: {
+    width: '48.5%',
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.card,
+    padding: 14,
+    gap: 4,
+    ...shadows.subtle,
+  },
   potCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  potName:   { fontSize: 14, fontWeight: '700', color: C.forestInk, flex: 1 },
-  speakerIcon: { fontSize: 14 },
-  potSubLabel: { fontSize: 11, fontWeight: '400', color: C.charcoal, opacity: 0.75 },
-  potAmount:  { fontSize: 20, fontWeight: '700', color: C.forestInk, marginTop: 6, marginBottom: 6 },
-  potStatusPill: { backgroundColor: C.keylime, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999, alignSelf: 'flex-start' },
-  potStatusText: { fontSize: 11, fontWeight: '600', color: C.forestInk },
-
-  txRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.white, borderWidth: 1, borderColor: C.sage, borderRadius: 12, padding: 12, marginTop: 8, gap: 8 },
-  txAmount: { fontSize: 16, fontWeight: '700' },
+  potName:   { fontSize: 14, fontWeight: '700', color: colors.forestInk, flex: 1 },
+  potSubLabel: { fontSize: 11, fontWeight: '400', color: colors.mutedText, marginTop: 1 },
+  potAmount:  { ...typography.cardAmount, fontSize: 19, marginTop: 4, marginBottom: 6 },
+  potStatusPill: {
+    backgroundColor: colors.panelKeylime,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: radius.badge,
+    alignSelf: 'flex-start',
+  },
+  potStatusText: { fontSize: 11, fontWeight: '600', color: colors.forestInk },
 
   // 5. Chit
-  chitCard:      { backgroundColor: C.slate, borderRadius: 14, padding: 20, gap: 6 },
+  chitCard: {
+    backgroundColor: colors.slateHush,
+    borderRadius: radius.card,
+    padding: 18,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#B4CAD1',
+    ...shadows.subtle,
+  },
   chitHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  chitName:      { fontSize: 16, fontWeight: '700', color: C.forestInk },
-  chitLockBadge: { backgroundColor: 'rgba(255,255,255,0.45)', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999 },
-  chitLockText:  { fontSize: 12, fontWeight: '600', color: C.forestInk },
-  chitAmount:    { fontSize: 26, fontWeight: '700', color: C.forestInk, marginVertical: 2 },
-  chitStatus:    { fontSize: 13, fontWeight: '400', color: C.charcoal },
+  chitName:      { fontSize: 15, fontWeight: '700', color: colors.forestInk },
+  chitLockBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+    borderRadius: radius.badge,
+  },
+  chitLockText:  { fontSize: 11, fontWeight: '600', color: colors.forestInk },
+  chitAmount:    { ...typography.cardAmount, fontSize: 24, marginVertical: 2 },
+  chitStatus:    { fontSize: 12, fontWeight: '500', color: colors.slateText },
 
   // 6. Gentle Note
-  gentleNoteCard:    { backgroundColor: C.keylime, borderRadius: 14, padding: 20, gap: 12 },
-  gentleNoteHeader:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  gentleNoteIcon:    { fontSize: 16 },
-  gentleNoteHeading: { fontSize: 15, fontWeight: '700', color: C.forestInk, flex: 1 },
-  gentleNoteBody:    { fontSize: 13, fontWeight: '400', color: C.charcoal, lineHeight: 20 },
-  audioBtn:     { borderWidth: 1.5, borderColor: C.forestInk, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16, alignSelf: 'flex-start' },
-  audioBtnText: { fontSize: 13, fontWeight: '600', color: C.forestInk },
+  gentleNoteCard: {
+    backgroundColor: colors.panelKeylime,
+    borderRadius: radius.card,
+    padding: 18,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.keylimeBorder,
+    ...shadows.subtle,
+  },
+  gentleNoteHeader:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  gentleNoteHeading: { fontSize: 14, fontWeight: '700', color: colors.forestInk, flex: 1 },
+  gentleNoteBody:    { ...typography.bodyMd, color: colors.charcoal, lineHeight: 20 },
 
   // 7. Education Goal
-  goalCard:    { backgroundColor: C.white, borderWidth: 1.5, borderColor: C.sage, borderRadius: 14, padding: 20, gap: 12 },
+  goalCard: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.card,
+    padding: 18,
+    gap: 10,
+    ...shadows.subtle,
+  },
   goalCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  goalBadge:   { backgroundColor: C.keylime, paddingVertical: 5, paddingHorizontal: 12, borderRadius: 999 },
-  goalBadgeText: { fontSize: 12, fontWeight: '600', color: C.forestInk },
-  goalPct:     { fontSize: 13, fontWeight: '700', color: C.forestInk },
-  goalTitle:   { fontSize: 17, fontWeight: '700', color: C.forestInk },
-  goalSubtext: { fontSize: 12, fontWeight: '400', color: C.charcoal, lineHeight: 17 },
-  progressTrack: { height: 10, backgroundColor: C.keylime, borderRadius: 999, overflow: 'hidden' },
-  progressFill:  { height: '100%', backgroundColor: C.forestInk, borderRadius: 999 },
-  goalMetrics:   { flexDirection: 'row', backgroundColor: C.keylime, borderRadius: 10, padding: 12 },
+  goalBadge:   {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.panelKeylime,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: radius.badge,
+  },
+  goalBadgeText: { fontSize: 11, fontWeight: '600', color: colors.forestInk },
+  goalPct:     { fontSize: 13, fontWeight: '700', color: colors.forestInk },
+  goalTitle:   { ...typography.headlineSm, color: colors.forestInk },
+  progressTrack: { height: 8, backgroundColor: colors.surfaceContainer, borderRadius: radius.pill, overflow: 'hidden' },
+  progressFill:  { height: '100%', backgroundColor: colors.forestInk, borderRadius: radius.pill },
+  goalMetrics:   {
+    flexDirection: 'row',
+    backgroundColor: colors.surfaceContainerLow,
+    borderRadius: radius.input,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   metricItem:    { flex: 1, alignItems: 'center', gap: 2 },
-  metricDivider: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: C.border },
-  metricLabel:   { fontSize: 10, fontWeight: '600', color: C.charcoal, textAlign: 'center', lineHeight: 14 },
-  metricValue:   { fontSize: 14, fontWeight: '700', color: C.forestInk },
-  goalReassurance: { fontSize: 12, fontWeight: '400', color: C.charcoal, lineHeight: 18 },
+  metricDivider: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: colors.border },
+  metricLabel:   { fontSize: 10, fontWeight: '600', color: colors.mutedText, textAlign: 'center', lineHeight: 14 },
+  metricValue:   { fontSize: 14, fontWeight: '700', color: colors.forestInk },
 
   // 8. Recent Earnings
-  earningsCard:    { backgroundColor: C.sage, borderRadius: 14, padding: 20, gap: 14 },
-  earningsHeading: { fontSize: 15, fontWeight: '700', color: C.forestInk },
+  earningsCard: {
+    backgroundColor: colors.panelSage,
+    borderRadius: radius.card,
+    padding: 18,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#A4D1AC',
+    ...shadows.subtle,
+  },
+  earningsHeading: { fontSize: 15, fontWeight: '700', color: colors.forestInk },
   earningsRow:     { flexDirection: 'row', gap: 8 },
-  earningsItem:    { flex: 1, backgroundColor: C.cream, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 6, alignItems: 'center', gap: 3 },
-  earningsItemHL:  { backgroundColor: C.keylime, borderWidth: 1.5, borderColor: C.forestInk },
-  earningsLabel:   { fontSize: 12, fontWeight: '600', color: C.charcoal },
-  earningsLabelHL: { color: C.forestInk },
-  earningsHindi:   { fontSize: 10, fontWeight: '400', color: C.charcoal, opacity: 0.7 },
-  earningsAmt:     { fontSize: 14, fontWeight: '700', color: C.forestInk },
-  earningsAmtHL:   { fontSize: 16 },
-  earningsSubtext: { fontSize: 11, fontWeight: '400', color: C.charcoal, opacity: 0.8, lineHeight: 16 },
+  earningsItem:    {
+    flex: 1,
+    backgroundColor: colors.white,
+    borderRadius: radius.input,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    gap: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  earningsItemHL:  {
+    backgroundColor: colors.panelKeylime,
+    borderWidth: 1.5,
+    borderColor: colors.forestInk,
+  },
+  earningsLabel:   { fontSize: 11, fontWeight: '600', color: colors.charcoal },
+  earningsLabelHL: { color: colors.forestInk },
+  earningsAmt:     { fontSize: 14, fontWeight: '700', color: colors.forestInk },
+  earningsAmtHL:   { fontSize: 15 },
+  earningsSubtext: { fontSize: 11, fontWeight: '400', color: colors.forestInkSub, opacity: 0.85, lineHeight: 16 },
 });

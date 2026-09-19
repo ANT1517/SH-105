@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Text, TextInput, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { colors, radius, shadows, typography } from '../theme';
 
 /**
  * Small bottom-sheet form. fields: [{ key, label, keyboardType?, placeholder? }]; onSubmit(values) may throw,
@@ -33,6 +34,7 @@ export default function FormModal({ visible, title, fields, initialValues, submi
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
       <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.sheet}>
+          <View style={styles.handleBar} />
           <Text style={styles.title}>{title}</Text>
           {fields.map((f) => (
             <View key={f.key} style={styles.field}>
@@ -43,16 +45,16 @@ export default function FormModal({ visible, title, fields, initialValues, submi
                 onChangeText={(t) => setValues((v) => ({ ...v, [f.key]: t }))}
                 keyboardType={f.keyboardType || 'default'}
                 placeholder={f.placeholder}
-                placeholderTextColor="#9AA59B"
+                placeholderTextColor="#7D8880"
               />
             </View>
           ))}
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <View style={styles.row}>
-            <TouchableOpacity style={[styles.btn, styles.cancel]} onPress={close} disabled={busy}>
+            <TouchableOpacity style={[styles.btn, styles.cancel]} onPress={close} disabled={busy} activeOpacity={0.7}>
               <Text style={styles.cancelText}>{t('common.cancel')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.btn, styles.save]} onPress={submit} disabled={busy}>
+            <TouchableOpacity style={[styles.btn, styles.save]} onPress={submit} disabled={busy} activeOpacity={0.8}>
               <Text style={styles.saveText}>{busy ? t('common.saving') : resolvedSubmitLabel}</Text>
             </TouchableOpacity>
           </View>
@@ -63,17 +65,46 @@ export default function FormModal({ visible, title, fields, initialValues, submi
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
-  sheet: { backgroundColor: '#FFFEFC', padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
-  title: { fontSize: 18, fontWeight: '700', color: '#0F3E17', marginBottom: 12 },
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15, 62, 23, 0.45)' },
+  sheet: {
+    backgroundColor: colors.cream,
+    paddingHorizontal: 22,
+    paddingTop: 12,
+    paddingBottom: 28,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    ...shadows.modal,
+  },
+  handleBar: {
+    width: 36,
+    height: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.borderMist,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  title: { ...typography.headlineMd, color: colors.forestInk, marginBottom: 14 },
   field: { marginBottom: 12 },
-  label: { fontSize: 13, color: '#222222', marginBottom: 4 },
-  input: { borderWidth: 1, borderColor: '#B1DBB8', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: '#222222' },
-  error: { color: '#B00020', marginBottom: 8 },
-  row: { flexDirection: 'row', gap: 12, marginTop: 4 },
-  btn: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
-  cancel: { backgroundColor: '#E1F4DF' },
-  cancelText: { color: '#0F3E17', fontWeight: '600' },
-  save: { backgroundColor: '#0F3E17' },
-  saveText: { color: '#FFFFFF', fontWeight: '600' },
+  label: { ...typography.labelMd, color: colors.charcoal, marginBottom: 6 },
+  input: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.input,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: colors.charcoal,
+  },
+  error: { color: colors.errorText, fontSize: 12, fontWeight: '500', marginBottom: 8 },
+  row: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  btn: { flex: 1, paddingVertical: 13, borderRadius: radius.button, alignItems: 'center' },
+  cancel: {
+    backgroundColor: colors.panelKeylime,
+    borderWidth: 1,
+    borderColor: colors.keylimeBorder,
+  },
+  cancelText: { color: colors.forestInk, fontWeight: '700', fontSize: 14 },
+  save: { backgroundColor: colors.forestInk },
+  saveText: { color: colors.cream, fontWeight: '700', fontSize: 14 },
 });
