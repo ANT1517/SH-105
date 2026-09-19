@@ -77,8 +77,8 @@ export default function MoneyPotMapScreen() {
             <Text style={styles.greetingLabel}>Namaste 🙏</Text>
             <Text style={styles.greetingName}>आपका स्वागत है — Welcome</Text>
           </View>
-          <TouchableOpacity style={styles.bellBtn} activeOpacity={0.7} onPress={() => router.push('/explore')}>
-            <Text style={styles.bellIcon}>🔔</Text>
+          <TouchableOpacity style={styles.bellBtn} activeOpacity={0.7} onPress={() => router.push('/safetyshield')} accessibilityLabel="Safety Shield: check a suspicious message">
+            <Text style={styles.bellIcon}>🛡️</Text>
           </TouchableOpacity>
         </View>
 

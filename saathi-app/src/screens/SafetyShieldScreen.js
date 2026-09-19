@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { checkSafety } from '../services/personCClient.js';
+import { looksSuspicious } from '../services/safetyTrigger.js';
 
 // --- STITCH DESIGN TOKENS ("Saathi Botanical") ---
 const COLORS = {
@@ -163,6 +164,15 @@ export default function SafetyShieldScreen({ navigation } = {}) {
               </View>
             </View>
 
+            {/* Verdict from the same scam-pattern rules Person C uses (deterministic, not the LLM). */}
+            <View style={[styles.verdictBadge, { backgroundColor: looksSuspicious(checked) ? '#FDE2E2' : '#E1F4DF' }]}>
+              <Text style={styles.verdictText}>
+                {looksSuspicious(checked)
+                  ? '⚠️ Looks like a scam. Do not pay, share OTPs or tap links.'
+                  : '✅ No known scam pattern found. Still be careful with unknown senders.'}
+              </Text>
+            </View>
+
             <View style={styles.explanationCard}>
               <Text style={styles.explanationText}>{resultText}</Text>
             </View>
@@ -210,6 +220,8 @@ export default function SafetyShieldScreen({ navigation } = {}) {
 }
 
 const styles = StyleSheet.create({
+  verdictBadge: { borderRadius: 12, padding: 14 },
+  verdictText: { fontSize: 15, fontWeight: '700', color: '#222222' },
   inputCard: {
     backgroundColor: COLORS.keylimeWash,
     borderRadius: 14,
