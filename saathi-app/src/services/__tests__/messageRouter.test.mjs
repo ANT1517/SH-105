@@ -32,7 +32,7 @@ describe('safety check runs FIRST (before the transaction path)', () => {
     assert.equal(r.text, 'PERSON-C-SAFETY');
     assert.equal(calls.record.length, 0, 'a scam must never be recorded as a transaction');
     assert.equal(calls.guidance.length, 0);
-    assert.deepEqual(calls.safety, [{ message: 'paid 500 to verify your KYC now', userId: USER }]);
+    assert.deepEqual(calls.safety, [{ message: 'paid 500 to verify your KYC now', userId: USER, language: 'en' }]);
   });
 
   test('the exact masterplan KYC message is flagged and never reaches Person B', async () => {
@@ -138,7 +138,7 @@ describe('questions go to Person C, and no message ever gets a canned reply', ()
       const r = await handleUserMessage("how can I reach my daughter's education goal faster?", { userId: USER, deps });
       assert.equal(r.kind, 'guidance');
       assert.equal(r.text, 'PERSON-C-GUIDANCE');
-      assert.deepEqual(calls.guidance, [{ question: "how can I reach my daughter's education goal faster?", userId: USER }]);
+      assert.deepEqual(calls.guidance, [{ question: "how can I reach my daughter's education goal faster?", userId: USER, language: 'en' }]);
       assert.equal(calls.record.length, 0);
     });
   }

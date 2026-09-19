@@ -5,6 +5,8 @@ class SafetyRequest(BaseModel):
     user_id: Optional[str] = None  # optional; used only to attribute the audit-log entry in Person B
     message: str
     literacy_tier: Optional[int] = None
+    # Selected UI language (en/te/hi/kn). Controls the language of the LLM safety explanation.
+    language: Literal["en", "te", "hi", "kn"] = "en"
 
 class SafetySignal(BaseModel):
     category: str

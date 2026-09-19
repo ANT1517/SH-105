@@ -1,10 +1,16 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
+import { Platform } from 'react-native';
 import { colors } from '../theme';
 
 export default function AppTabs() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
+
+  const isWeb = Platform.OS === 'web';
+  const bottomInset = isWeb ? 10 : insets.bottom;
 
   return (
     <Tabs
@@ -16,13 +22,23 @@ export default function AppTabs() {
           backgroundColor: colors.paperCream,
           borderTopColor: colors.borderMist,
           borderTopWidth: 1,
-          height: 56 + insets.bottom,
-          paddingBottom: insets.bottom + 8,
+          height: 60 + bottomInset,
+          paddingBottom: Math.max(bottomInset, 8),
           paddingTop: 8,
+          elevation: 4,
+          shadowColor: colors.forestInk,
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.03,
+          shadowRadius: 6,
         },
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
+          letterSpacing: 0.2,
+          marginTop: 2,
+        },
+        tabBarItemStyle: {
+          paddingVertical: 2,
         },
       }}
     >
@@ -30,11 +46,11 @@ export default function AppTabs() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Tijori',
+          title: t('tabs.tijori'),
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'wallet' : 'wallet-outline'}
-              size={22}
+              size={21}
               color={color}
             />
           ),
@@ -45,11 +61,11 @@ export default function AppTabs() {
       <Tabs.Screen
         name="goals"
         options={{
-          title: 'Lakshya',
+          title: t('tabs.lakshya'),
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'flag' : 'flag-outline'}
-              size={22}
+              size={21}
               color={color}
             />
           ),
@@ -60,11 +76,11 @@ export default function AppTabs() {
       <Tabs.Screen
         name="ledger"
         options={{
-          title: 'Khata',
+          title: t('tabs.khata'),
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'book' : 'book-outline'}
-              size={22}
+              size={21}
               color={color}
             />
           ),
@@ -75,11 +91,11 @@ export default function AppTabs() {
       <Tabs.Screen
         name="transactions"
         options={{
-          title: 'Len-Den',
+          title: t('tabs.transactions'),
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'swap-horizontal' : 'swap-horizontal-outline'}
-              size={22}
+              size={21}
               color={color}
             />
           ),
@@ -90,11 +106,11 @@ export default function AppTabs() {
       <Tabs.Screen
         name="explore"
         options={{
-          title: 'Sahayata',
+          title: t('tabs.sahayata'),
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'chatbubbles' : 'chatbubbles-outline'}
-              size={22}
+              size={21}
               color={color}
             />
           ),

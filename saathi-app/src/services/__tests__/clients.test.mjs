@@ -67,7 +67,7 @@ describe('Person C client', () => {
       fetchStub = installFetch({ 'POST /api/v1/integration/person_a/guidance': { response_text: 'Person C says hi', source_class: 'SEBI', mode: 'personalized', disclaimer: true } });
       const r = await getGuidance({ question: 'how can I reach my goal?' });
       assert.deepEqual(r, { text: 'Person C says hi', sourceClass: 'SEBI', mode: 'personalized' });
-      assert.deepEqual(fetchStub.calls[0].body, { user_id: 'meera_001', question: 'how can I reach my goal?', request_mode: 'personalized' });
+      assert.deepEqual(fetchStub.calls[0].body, { user_id: 'meera_001', question: 'how can I reach my goal?', request_mode: 'personalized', language: 'en' });
       assert.equal(fetchStub.calls[0].origin, 'http://c.test:8000');
     }));
 
@@ -76,7 +76,7 @@ describe('Person C client', () => {
       fetchStub = installFetch({ 'POST /api/v1/safety/check': { response_text: 'This looks suspicious.', source_class: 'system', mode: 'safety', disclaimer: true } });
       const r = await checkSafety({ message: 'Your KYC will expire, click to verify' });
       assert.equal(r.text, 'This looks suspicious.');
-      assert.deepEqual(fetchStub.calls[0].body, { user_id: 'meera_001', message: 'Your KYC will expire, click to verify' });
+      assert.deepEqual(fetchStub.calls[0].body, { user_id: 'meera_001', message: 'Your KYC will expire, click to verify', language: 'en' });
     }));
 
   test('FastAPI-style {detail} errors and outages become ApiErrors', () =>

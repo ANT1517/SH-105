@@ -13,11 +13,15 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
+import { useLanguage } from '../context/LanguageContext';
 import { handleUserMessage } from '../services/messageRouter.js';
 import { formatINR } from '../services/viewModels.js';
 import { guessAudioMeta, transcribeAudio } from '../services/voiceClient.js';
 import { appendAudio } from '../services/voiceRuntime'; // platform adapter: a File on native, a Blob on web
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, radius, shadows, typography } from '../theme';
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
 const C = {
@@ -46,6 +50,8 @@ const C = {
 export default function ChatScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
+  const { language } = useLanguage();
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [status, setStatus] = useState('idle'); // 'idle' | 'thinking' | 'success' | 'error'
@@ -84,7 +90,8 @@ export default function ChatScreen() {
 
     try {
       // Route it: safety check first, then transaction -> Person B, otherwise question -> Person C.
-      const result = await handleUserMessage(userText);
+      // Pass language so Person C replies in the user's selected UI language.
+      const result = await handleUserMessage(userText, { language, t });
 
       const saathiMessage = {
         id: (Date.now() + 1).toString(),
@@ -104,7 +111,7 @@ export default function ChatScreen() {
     } catch (err) {
       console.warn('[ChatScreen] unexpected failure:', err && err.message);
       setStatus('error');
-      setErrorMessage("Something went wrong on my side, so nothing was recorded. Please try again.");
+      setErrorMessage(t('chat.generalError'));
     } finally {
       sendingRef.current = false;
     }
@@ -123,7 +130,7 @@ export default function ChatScreen() {
         const transcript = await transcribeAudio({ uri, ...guessAudioMeta(uri) }, { appendAudio });
         if (!transcript) {
           setStatus('error');
-          setErrorMessage("I couldn't hear anything clearly. Please try again, a little closer to the microphone.");
+          setErrorMessage(t('chat.voiceGenericError'));
         } else {
           await handleSend({ spoken: transcript });
         }
@@ -132,8 +139,8 @@ export default function ChatScreen() {
         setStatus('error');
         setErrorMessage(
           err && err.isNetworkError
-            ? "I couldn't reach the speech service, so nothing was heard or recorded. Please try again, or type your message."
-            : `I couldn't turn that recording into text (${err && err.message ? err.message : 'unknown error'}). Nothing was recorded.`,
+            ? t('chat.voiceNetworkError')
+            : t('chat.voiceTranscribeError', { error: err && err.message ? err.message : 'unknown error', defaultValue: `I couldn't turn that recording into text (${err && err.message ? err.message : 'unknown error'}). Nothing was recorded.` }),
         );
       } finally {
         setVoiceState('idle');
@@ -147,7 +154,7 @@ export default function ChatScreen() {
       setVoiceState('recording');
     } else {
       setStatus('error');
-      setErrorMessage(voice.error || 'Could not start recording.');
+      setErrorMessage(voice.error || t('chat.micStartError', { defaultValue: 'Could not start recording.' }));
     }
   };
 
@@ -164,7 +171,7 @@ export default function ChatScreen() {
             {item.type === 'voice' ? (
               <View style={styles.voiceContainer}>
                 <View style={styles.voiceBadge}>
-                  <Text style={styles.waveformIcon}>〰️🎙️</Text>
+                  <Ionicons name="mic" size={13} color={colors.cream} style={{ marginRight: 4 }} />
                   {item.duration ? <Text style={styles.voiceDuration}>{item.duration}</Text> : null}
                 </View>
                 <Text style={styles.userBubbleText}>"{item.text}"</Text>
@@ -187,22 +194,23 @@ export default function ChatScreen() {
             <View style={styles.confirmCard}>
               <View style={styles.confirmCardTop}>
                 <View style={styles.confirmPill}>
+                  <Ionicons name="checkmark-circle" size={13} color={colors.forestInk} style={{ marginRight: 4 }} />
                   <Text style={styles.confirmPillText}>
-                    ✅ {item.recorded.pot.charAt(0).toUpperCase() + item.recorded.pot.slice(1).replace(/_/g, ' ')} Pot
+                    {t(`pots.${item.recorded.pot}.name`, { defaultValue: item.recorded.pot.charAt(0).toUpperCase() + item.recorded.pot.slice(1).replace(/_/g, ' ') })} {t('transactions.pot', { name: '', defaultValue: 'Pot' }).trim()}
                   </Text>
                 </View>
                 <Text style={styles.confirmAmount}>
-                  {['expense', 'commitment'].includes(item.recorded.type) ? '-' : '+'}{formatINR(item.recorded.amount)}
+                  {['expense', 'commitment'].includes(item.recorded.type) ? '−' : '+'}{formatINR(item.recorded.amount)}
                 </Text>
               </View>
               <Text style={styles.confirmLine}>
-                {item.recorded.type.charAt(0).toUpperCase() + item.recorded.type.slice(1)} • {item.recorded.category}
+                {t(`transactions.type.${item.recorded.type}`, { defaultValue: item.recorded.type.charAt(0).toUpperCase() + item.recorded.type.slice(1) })} • {item.recorded.category}
               </Text>
               {item.recorded.totalBalance != null && (
                 <>
                   <View style={styles.confirmDivider} />
                   <View style={styles.confirmTotalRow}>
-                    <Text style={styles.confirmTotalLabel}>Total abhi — Running total</Text>
+                    <Text style={styles.confirmTotalLabel}>{t('chat.runningTotal')}</Text>
                     <Text style={styles.confirmTotalValue}>{formatINR(item.recorded.totalBalance)}</Text>
                   </View>
                 </>
@@ -216,10 +224,10 @@ export default function ChatScreen() {
           <View style={styles.alertCardContainer}>
             <View style={styles.alertCard}>
               <View style={styles.alertCardHeader}>
-                <Text style={styles.alertCardBadge}>🛡️ Safety check</Text>
+                <Text style={styles.alertCardBadge}>{t('chat.safetyCheck')}</Text>
               </View>
               <View style={styles.alertCardBody}>
-                <Text style={styles.alertCardLabel}>Message checked:</Text>
+                <Text style={styles.alertCardLabel}>{t('chat.messageChecked')}</Text>
                 <Text style={styles.alertCardSms}>"{item.flaggedMessage}"</Text>
               </View>
               <TouchableOpacity
@@ -231,7 +239,7 @@ export default function ChatScreen() {
                 }
                 activeOpacity={0.8}
               >
-                <Text style={styles.seeWhyButtonText}>🛡️ See why &amp; what to do</Text>
+                <Text style={styles.seeWhyButtonText}>{t('common.seeWhy')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -244,7 +252,7 @@ export default function ChatScreen() {
             {item.nlpMeta.confidence >= 0.85 && (
               <View style={styles.understandingCard}>
                 <View style={styles.understandingHeader}>
-                  <Text style={styles.understandingTitle}>🧠 Saathi understood:</Text>
+                  <Text style={styles.understandingTitle}>{t('chat.understood')}</Text>
                   <View style={styles.confidenceBadge}>
                     <Text style={styles.confidenceText}>
                       {Math.round((item.nlpMeta.confidence || 0) * 100)}%
@@ -282,10 +290,11 @@ export default function ChatScreen() {
 
                 <View style={styles.understandingMetaRow}>
                   <Text style={styles.understandingMetaText}>
-                    Language: {
+                    {t('chat.detectedLanguage', { defaultValue: 'Language' })}: {
                       item.nlpMeta.language === 'en' ? 'English' :
                       item.nlpMeta.language === 'hi' ? 'Hindi' :
                       item.nlpMeta.language === 'te' ? 'Telugu' :
+                      item.nlpMeta.language === 'kn' ? 'Kannada' :
                       item.nlpMeta.language === 'mixed' ? 'Mixed' : item.nlpMeta.language
                     }
                   </Text>
@@ -297,7 +306,7 @@ export default function ChatScreen() {
             {item.nlpMeta.confidence >= 0.60 && item.nlpMeta.confidence < 0.85 && (
               <View style={styles.confirmingCard}>
                 <View style={styles.understandingHeader}>
-                  <Text style={styles.confirmingTitle}>🤔 Saathi wants to confirm:</Text>
+                  <Text style={styles.confirmingTitle}>{t('chat.wantsToConfirm')}</Text>
                   <View style={styles.confirmingBadge}>
                     <Text style={styles.confirmingBadgeText}>
                       {Math.round((item.nlpMeta.confidence || 0) * 100)}%
@@ -340,7 +349,7 @@ export default function ChatScreen() {
                       item.nlpMeta.language === 'hi' ? 'Hindi' :
                       item.nlpMeta.language === 'te' ? 'Telugu' :
                       item.nlpMeta.language === 'mixed' ? 'Mixed' : item.nlpMeta.language
-                    } • Tap or reply to adjust
+                    } • {t('chat.tapToAdjust')}
                   </Text>
                 </View>
               </View>
@@ -350,7 +359,7 @@ export default function ChatScreen() {
             {item.nlpMeta.confidence < 0.60 && (
               <View style={styles.clarifyCard}>
                 <View style={styles.understandingHeader}>
-                  <Text style={styles.clarifyTitle}>💬 Clarification needed:</Text>
+                  <Text style={styles.clarifyTitle}>{t('chat.clarificationNeeded')}</Text>
                   <View style={styles.clarifyBadge}>
                     <Text style={styles.clarifyBadgeText}>
                       {Math.round((item.nlpMeta.confidence || 0) * 100)}%
@@ -358,7 +367,7 @@ export default function ChatScreen() {
                   </View>
                 </View>
                 <Text style={styles.clarifySubtext}>
-                  Please specify the exact amount or clarify your request.
+                  {t('chat.clarificationSubtext')}
                 </Text>
               </View>
             )}
@@ -375,12 +384,12 @@ export default function ChatScreen() {
       {/* ── HEADER ─────────────────────────────────────────────────────── */}
       <View style={styles.headerBar}>
         <View>
-          <Text style={styles.headerEyebrow}>SAATHI CHAT</Text>
-          <Text style={styles.headerTitle}>Saathi Chat Assistant</Text>
+          <Text style={styles.headerEyebrow}>{t('chat.headerEyebrow')}</Text>
+          <Text style={styles.headerTitle}>{t('chat.headerTitle')}</Text>
         </View>
         <View style={styles.onlineBadge}>
           <View style={styles.onlineDot} />
-          <Text style={styles.onlineText}>Active</Text>
+          <Text style={styles.onlineText}>{t('common.active')}</Text>
         </View>
       </View>
 
@@ -398,9 +407,9 @@ export default function ChatScreen() {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
-              <Text style={styles.emptyTitle}>Namaste 🙏</Text>
+              <Text style={styles.emptyTitle}>{t('chat.emptyTitle')}</Text>
               <Text style={styles.emptyText}>
-                Tell Saathi what you earned or spent, or ask a question about your money. You can also paste a message you are unsure about.
+                {t('chat.emptyText')}
               </Text>
             </View>
           }
@@ -410,7 +419,7 @@ export default function ChatScreen() {
                 <View style={styles.thinkingContainer}>
                   <View style={styles.thinkingBubble}>
                     <ActivityIndicator size="small" color={C.forestInk} />
-                    <Text style={styles.thinkingText}>Saathi is thinking...</Text>
+                    <Text style={styles.thinkingText}>{t('chat.thinking')}</Text>
                   </View>
                 </View>
               )}
@@ -418,7 +427,7 @@ export default function ChatScreen() {
               {status === 'error' && errorMessage && (
                 <View style={styles.errorContainer}>
                   <View style={styles.errorBubble}>
-                    <Text style={styles.errorIcon}>⚠️</Text>
+                    <Ionicons name="alert-circle-outline" size={16} color={colors.errorText} />
                     <Text style={styles.errorText}>{errorMessage}</Text>
                   </View>
                 </View>
@@ -432,15 +441,15 @@ export default function ChatScreen() {
           <View style={styles.inputWrapper}>
             <TextInput
               style={styles.textInput}
-              placeholder={voiceState === 'recording' ? 'Listening... tap ⏹ when you are done' : 'Saathi se kuch bhi poochein — Ask Saathi anything...'}
-              placeholderTextColor="#666666"
+              placeholder={voiceState === 'recording' ? t('chat.listening') : t('chat.placeholder')}
+              placeholderTextColor="#7D8880"
               value={inputText}
               onChangeText={setInputText}
               onSubmitEditing={handleSend}
             />
             {inputText.trim().length > 0 ? (
               <TouchableOpacity style={styles.actionButton} onPress={handleSend} activeOpacity={0.8}>
-                <Text style={styles.actionButtonIcon}>➔</Text>
+                <Ionicons name="arrow-up" size={18} color={colors.cream} />
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
@@ -448,12 +457,12 @@ export default function ChatScreen() {
                 onPress={handleMic}
                 disabled={voiceState === 'transcribing'}
                 activeOpacity={0.8}
-                accessibilityLabel={voiceState === 'recording' ? 'Stop recording' : 'Speak to Saathi'}
+                accessibilityLabel={voiceState === 'recording' ? t('chat.stopRecording') : t('chat.speakToSaathi')}
               >
                 {voiceState === 'transcribing' ? (
-                  <ActivityIndicator size="small" color={C.cream} />
+                  <ActivityIndicator size="small" color={colors.cream} />
                 ) : (
-                  <Text style={styles.actionButtonIcon}>{voiceState === 'recording' ? '⏹' : '🎙️'}</Text>
+                  <Ionicons name={voiceState === 'recording' ? 'stop' : 'mic'} size={18} color={colors.cream} />
                 )}
               </TouchableOpacity>
             )}

@@ -10,6 +10,8 @@ class SimulatorInput(BaseModel):
     timeframe_months: Optional[int] = Field(None, description="Optional timeframe in months to reach the goal")
     literacy_tier: Optional[int] = Field(None, description="Literacy tier for explanation formatting")
     question: Optional[str] = Field(None, description="Optional user question for RAG context")
+    # Selected UI language (en/te/hi/kn). Controls the language of the LLM explanation.
+    language: Literal["en", "te", "hi", "kn"] = Field("en", description="Response language")
 
 class SimulatorResult(BaseModel):
     scenario: str

@@ -2,33 +2,50 @@
  * Pure mappers: Person B API responses -> exactly what the screens render. No React, no network, so they are
  * unit-tested with node. Also the adapters that reshape the bundled sample fixture into the SAME API shapes, so a
  * screen has ONE rendering path whether the data is live or (explicitly, with a banner) offline sample data.
+ *
+ * Localization:  When a translator function `t` is passed, pot names, statuses, and relative dates are read from
+ * i18n keys.  When `t` is omitted (e.g., in unit tests), the English defaults defined below are used unchanged.
+ * Numeric amounts and financial calculations are NEVER translated — only display labels.
  */
 
 export const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
 const num = (v) => Number(v) || 0;
 
-// Static labels per pot (what the pot IS, never how it is doing). Amounts always come from Person B.
-const POT_LABELS = {
-  bank: { name: 'Bank', subLabel: 'Bank savings', status: 'Available' },
-  cash: { name: 'Cash', subLabel: 'At home or bag', status: 'In hand' },
-  shg: { name: 'SHG Bachat', subLabel: 'Self-help group savings', status: 'Group savings' },
-  post_office: { name: 'Post Office', subLabel: 'Post office savings', status: 'Savings' },
+// English defaults — used when `t` is not provided (unit tests).
+const POT_LABELS_EN = {
+  bank:        { name: 'Bank',        subLabel: 'Bank savings',              status: 'Available' },
+  cash:        { name: 'Cash',        subLabel: 'At home or bag',            status: 'In hand' },
+  shg:         { name: 'SHG Bachat',  subLabel: 'Self-help group savings',   status: 'Group savings' },
+  post_office: { name: 'Post Office', subLabel: 'Post office savings',       status: 'Savings' },
 };
 const POT_ORDER = ['bank', 'cash', 'shg', 'post_office'];
 
-/** GET /api/financial-state -> Money Pot Map view model */
-export function buildPotsViewModel(state) {
+/** Resolve a translated (or English-default) label for a pot. */
+function potLabel(id, t) {
+  if (!t) return POT_LABELS_EN[id] || { name: id, subLabel: '', status: '' };
+  return {
+    name:     t(`pots.${id}.name`,     { defaultValue: (POT_LABELS_EN[id] || {}).name     || id }),
+    subLabel: t(`pots.${id}.subLabel`, { defaultValue: (POT_LABELS_EN[id] || {}).subLabel || '' }),
+    status:   t(`pots.${id}.status`,   { defaultValue: (POT_LABELS_EN[id] || {}).status   || '' }),
+  };
+}
+
+/** GET /api/financial-state -> Money Pot Map view model
+ * @param {object} state   – raw API response from Person B
+ * @param {Function} [t]   – i18next translator (optional; omit in unit tests)
+ */
+export function buildPotsViewModel(state, t) {
   const pots = state.pots || {};
   const potCards = POT_ORDER.filter((id) => pots[id] !== undefined).map((id) => ({
-    id, ...POT_LABELS[id], amountNum: num(pots[id]), amount: formatINR(pots[id]),
+    id, ...potLabel(id, t), amountNum: num(pots[id]), amount: formatINR(pots[id]),
   }));
   // Person B tracks the business pot separately and leaves it out of total_balance (see Person B potCalculator).
   if (pots.business !== undefined) {
-    potCards.push({
-      id: 'business', name: 'Business', subLabel: 'Shop and tailoring income', status: 'Tracked separately',
-      amountNum: num(pots.business), amount: formatINR(pots.business),
-    });
+    const biz = t
+      ? { name: t('pots.business.name', { defaultValue: 'Business' }), subLabel: t('pots.business.subLabel', { defaultValue: 'Shop and tailoring income' }), status: t('pots.business.status', { defaultValue: 'Tracked separately' }) }
+      : { name: 'Business', subLabel: 'Shop and tailoring income', status: 'Tracked separately' };
+    potCards.push({ id: 'business', ...biz, amountNum: num(pots.business), amount: formatINR(pots.business) });
   }
 
   const goal = state.goal
@@ -43,45 +60,60 @@ export function buildPotsViewModel(state) {
   const last = state.business && state.business.last_entry;
   // Person B's total_balance leaves the business pot out, but the app shows it as a pot card, so the headline
   // total must be the sum of every pot shown (chit included) or it won't match the cards.
-  const total = Object.values(pots).reduce((t, v) => t + num(v), 0);
+  const total = Object.values(pots).reduce((tot, v) => tot + num(v), 0);
+
+  const chitName   = t ? t('pots.chit.name',   { defaultValue: 'Chit fund' })                             : 'Chit fund';
+  const chitStatus = t ? t('pots.chit.status',  { defaultValue: 'Committed: cannot spend it now' })        : 'Committed: cannot spend it now';
+
   return {
     total,
     totalText: formatINR(total),
     pots: potCards,
-    chit: { name: 'Chit fund', amountNum: num(pots.chit_committed), amount: formatINR(pots.chit_committed), status: 'Committed: cannot spend it now' },
+    chit: { name: chitName, amountNum: num(pots.chit_committed), amount: formatINR(pots.chit_committed), status: chitStatus },
     goal,
     business: last
       ? { activity: state.business.activity, revenue: formatINR(last.revenue), cost: formatINR(last.cost), profit: formatINR(last.profit) }
       : null,
-    recent: (state.recent_transactions || []).slice(0, 10).map((t) => ({
-      id: String(t.id), text: t.raw_text, type: t.tx_type, amount: formatINR(t.amount), pot: t.target_pot,
+    recent: (state.recent_transactions || []).slice(0, 10).map((tx) => ({
+      id: String(tx.id), text: tx.raw_text, type: tx.tx_type, amount: formatINR(tx.amount), pot: tx.target_pot,
     })),
     updatedAt: state.updated_at || null,
   };
 }
 
-/** "Today" / "Yesterday" / "3 days ago" / "12 Sep 2026" */
-export function relativeDate(iso, now = new Date()) {
+/**
+ * "Today" / "Yesterday" / "3 days ago" / locale-formatted date.
+ * @param {string} iso  – ISO date string
+ * @param {Date} now    – current date (injectable for tests)
+ * @param {Function} [t] – i18next translator (optional)
+ */
+export function relativeDate(iso, now = new Date(), t) {
   if (!iso) return ''; // new Date(null) would be 1 Jan 1970
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   const startOfDay = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const days = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
-  if (days <= 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-  if (days < 7) return `${days} days ago`;
+  if (days <= 0) return t ? t('common.today',     { defaultValue: 'Today' })        : 'Today';
+  if (days === 1) return t ? t('common.yesterday', { defaultValue: 'Yesterday' })   : 'Yesterday';
+  if (days < 7)  return t ? t('common.daysAgo',   { count: days, defaultValue: `${days} days ago` }) : `${days} days ago`;
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-/** GET /api/ledger -> Business Ledger view model (totals are plain sums of the entries Person B returned) */
-export function buildLedgerViewModel(ledger, now = new Date()) {
+/**
+ * GET /api/ledger -> Business Ledger view model (totals are plain sums of the entries Person B returned).
+ * @param {object} ledger  – raw API response from Person B
+ * @param {Date} [now]     – current date (injectable for tests)
+ * @param {Function} [t]   – i18next translator (optional)
+ */
+export function buildLedgerViewModel(ledger, now = new Date(), t) {
   const entries = (ledger.entries || []).map((e) => ({
     id: String(e.id), activity: e.activity, revenue: num(e.revenue), cost: num(e.cost), profit: num(e.profit), createdAt: e.created_at,
   }));
   const sum = (key) => entries.reduce((total, e) => total + e[key], 0);
+  const businessLedgerLabel = t ? t('ledger.businessLedger', { defaultValue: 'Business ledger' }) : 'Business ledger';
   return {
     hasEntries: entries.length > 0,
-    badgeLabel: entries.length ? entries[0].activity : 'Business ledger',
+    badgeLabel: entries.length ? entries[0].activity : businessLedgerLabel,
     revenue: formatINR(sum('revenue')),
     cost: formatINR(sum('cost')),
     profit: formatINR(sum('profit')),
@@ -89,9 +121,11 @@ export function buildLedgerViewModel(ledger, now = new Date()) {
     entries: entries.map((e) => ({
       id: e.id,
       name: e.activity,
-      date: relativeDate(e.createdAt, now),
+      date: relativeDate(e.createdAt, now, t),
       amount: `${e.profit < 0 ? '-' : '+'}${formatINR(Math.abs(e.profit))}`,
-      detail: `Revenue ${formatINR(e.revenue)} • Cost ${formatINR(e.cost)}`,
+      detail: t
+        ? t('ledger.detailLine', { rev: formatINR(e.revenue), cost: formatINR(e.cost), defaultValue: `Revenue ${formatINR(e.revenue)} • Cost ${formatINR(e.cost)}` })
+        : `Revenue ${formatINR(e.revenue)} • Cost ${formatINR(e.cost)}`,
     })),
   };
 }

@@ -1,6 +1,9 @@
 /**
  * Person C client: the ONLY place financial guidance and safety explanations come from
  * (masterplan s8 compliance boundary). The app never composes or generates such text itself.
+ *
+ * The `language` field (en/te/hi/kn) is passed to Person C so LLM responses are produced
+ * in the user's selected UI language. It is INDEPENDENT of NLP input language detection.
  */
 import { getPersonCApiUrl, getUserId } from './apiConfig.js';
 import { requestJson } from './http.js';
@@ -11,12 +14,16 @@ const LLM_TIMEOUT_MS = 45000;
 /**
  * POST /api/v1/integration/person_a/guidance: Person C fetches this user's live state from Person B itself and
  * answers from it. Returns Person C's own reply text.
+ * @param {object} opts
+ * @param {string} opts.question
+ * @param {string} [opts.userId]
+ * @param {string} [opts.language] – selected UI language code (en/te/hi/kn), defaults to "en"
  * @returns {Promise<{text: string, sourceClass: string, mode: string}>}
  */
-export async function getGuidance({ question, userId = getUserId() }) {
+export async function getGuidance({ question, userId = getUserId(), language = 'en' }) {
   const { body } = await requestJson(`${getPersonCApiUrl()}/api/v1/integration/person_a/guidance`, {
     method: 'POST',
-    body: { user_id: userId, question, request_mode: 'personalized' },
+    body: { user_id: userId, question, request_mode: 'personalized', language },
     timeoutMs: LLM_TIMEOUT_MS,
   });
   return { text: body.response_text, sourceClass: body.source_class, mode: body.mode };
@@ -24,12 +31,16 @@ export async function getGuidance({ question, userId = getUserId() }) {
 
 /**
  * POST /api/v1/safety/check: Person C's plain-language explanation for a possibly suspicious message.
+ * @param {object} opts
+ * @param {string} opts.message
+ * @param {string} [opts.userId]
+ * @param {string} [opts.language] – selected UI language code (en/te/hi/kn), defaults to "en"
  * @returns {Promise<{text: string, sourceClass: string, mode: string}>}
  */
-export async function checkSafety({ message, userId = getUserId() }) {
+export async function checkSafety({ message, userId = getUserId(), language = 'en' }) {
   const { body } = await requestJson(`${getPersonCApiUrl()}/api/v1/safety/check`, {
     method: 'POST',
-    body: { user_id: userId, message },
+    body: { user_id: userId, message, language },
     timeoutMs: LLM_TIMEOUT_MS,
   });
   return { text: body.response_text, sourceClass: body.source_class, mode: body.mode };

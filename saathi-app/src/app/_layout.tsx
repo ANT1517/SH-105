@@ -1,14 +1,29 @@
+import '../i18n';
 import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useColorScheme } from 'react-native';
+import { useEffect } from 'react';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { LanguageProvider, useLanguage } from '../context/LanguageContext';
 
 SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout() {
+function RootNavigator() {
   const colorScheme = useColorScheme();
+  const { isReady } = useLanguage();
+
+  useEffect(() => {
+    if (isReady) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [isReady]);
+
+  if (!isReady) {
+    return null;
+  }
+
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
@@ -19,3 +34,12 @@ export default function RootLayout() {
     </ThemeProvider>
   );
 }
+
+export default function RootLayout() {
+  return (
+    <LanguageProvider>
+      <RootNavigator />
+    </LanguageProvider>
+  );
+}
+
