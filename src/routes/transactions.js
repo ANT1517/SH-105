@@ -293,6 +293,18 @@ router.post('/', async (req, res) => {
         const newAmount = potResult.rows[0] ? Number(potResult.rows[0].amount) : amount;
         potUpdate = { potType: targetPot, newAmount };
 
+        // 3c-ii. Business-pot money also belongs in the Khata (ledger). The pot was already updated above,
+        // so this only records the entry -- unlike POST /api/ledger, which credits the pot itself.
+        if (targetPot === 'business') {
+          const rev = potOperation === 'add' ? amount : 0;
+          const cst = potOperation === 'subtract' ? amount : 0;
+          await client.query(
+            `INSERT INTO ledger_entries (user_id, activity, revenue, cost, profit, notes, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [trimmedUserId, category, rev, cst, rev - cst, String(raw_text || ''), createdAt]
+          );
+        }
+
         // 3d. Insert audit log record atomically using same client
         const auditEntry = await logEvent({
           user_id: trimmedUserId,
@@ -397,6 +409,30 @@ router.post('/', async (req, res) => {
 
     console.error('[Transactions Route] Atomic transaction failed:', err.message);
     return res.status(500).json({ error: 'Internal server error processing transaction' });
+  }
+});
+
+/**
+ * GET /api/transactions?user_id=...  -> newest first (max 100). Every transaction, all pots; the Khata
+ * (ledger) stays business-only.
+ */
+router.get('/', async (req, res) => {
+  try {
+    const resolved = resolveUserId(String(req.query.user_id || 'meera_001').trim());
+    if (resolved.error) return res.status(404).json({ error: 'unknown_user', message: resolved.error });
+    let rows = [];
+    if (isConnected()) {
+      const r = await query(
+        `SELECT id, tx_type, amount, category, target_pot, raw_text, channel, created_at
+           FROM transactions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100`,
+        [resolved.userId]
+      );
+      rows = r.rows;
+    }
+    res.json({ user_id: resolved.userId, count: rows.length, transactions: rows });
+  } catch (err) {
+    console.error('[Transactions Route] list failed:', err.message);
+    res.status(500).json({ error: 'Could not load transactions' });
   }
 });
 
